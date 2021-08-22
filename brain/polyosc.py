@@ -45,7 +45,7 @@ def main():
         print("Board not detected")
         exit(1)
 
-    input(f"Found device at {promptcv[0]} and {promptout[0]} [confirm]")
+    input(f"Found device at {promptcv[0]} and {promptout[0]} [confirm]: ")
 
     onnotes = set()
     pw = [0]
