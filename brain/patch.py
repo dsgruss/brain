@@ -8,39 +8,40 @@ import sounddevice as sd
 class Shell(cmd.Cmd):
     intro = "Welcome to the audio routing shell.   Type help or ? to list commands.\n"
     prompt = "☢️ "
-    inputs = {
+    audio_inputs = {
         str(i): d
         for i, d in enumerate(sd.query_devices())
         if d["max_input_channels"] != 0 and d["hostapi"] == 0
     }
-    outputs = {
+    audio_outputs = {
         str(i): d
         for i, d in enumerate(sd.query_devices())
         if d["max_output_channels"] != 0 and d["hostapi"] == 0
     }
-    inmidi = {f"m{i}": d for i, d in enumerate(mido.get_input_names())}
-    outmidi = {
+    midi_inputs = {f"m{i}": d for i, d in enumerate(mido.get_input_names())}
+    midi_outputs = {
         f"m{i + len(mido.get_input_names())}": d
         for i, d in enumerate(mido.get_output_names())
     }
-    open_devices = []
+    open_audio_devices = []
+    open_midi_devices = []
 
     def do_list(self, arg):
         "List the attached midi and audio devices."
         if arg == "midi" or arg == "":
             print("MIDI input devices:")
-            for k, v in self.inmidi.items():
+            for k, v in self.midi_inputs.items():
                 print(f"    {k}: {v}")
             print("MIDI output devices:")
-            for k, v in self.outmidi.items():
+            for k, v in self.midi_outputs.items():
                 print(f"    {k}: {v}")
         if arg == "input" or arg == "":
             print("Audio input devices:")
-            for k, v in self.inputs.items():
+            for k, v in self.audio_inputs.items():
                 print(f"    {k}:  {v['name']}")
         if arg == "output" or arg == "":
             print("Audio output devices:")
-            for k, v in self.outputs.items():
+            for k, v in self.audio_outputs.items():
                 print(f"    {k}:  {v['name']}")
 
     def do_patch(self, arg):
@@ -49,15 +50,15 @@ class Shell(cmd.Cmd):
             print("Incorrect number of parameters:  patch <input> <output>")
         inp = arg.split()[0]
         out = arg.split()[1]
-        if inp not in self.inmidi and inp not in self.inputs:
+        if inp not in self.midi_inputs and inp not in self.audio_inputs:
             print(f"Invalid input parameter:  {inp}")
             return
-        if out not in self.outputs:
+        if out not in self.midi_outputs and out not in self.audio_outputs:
             print(f"Invalid output parameter: {out}")
             return
 
-        if inp in self.inputs:
-
+        if inp in self.audio_inputs and out in self.audio_outputs:
+            # Patch audio streams
             def passcallback(indata, outdata, frames, time, status):
                 if status:
                     print(f"\nPassthrough: {status}")
@@ -72,9 +73,9 @@ class Shell(cmd.Cmd):
             )
 
             s.start()
-            self.open_devices.append(s)
-        else:
-
+            self.open_audio_devices.append(s)
+        elif inp in self.midi_inputs and out in self.audio_outputs:
+            # Promote midi stream to audio rate CV
             def callback(outdata, frames, time, status):
                 if status:
                     print(f"CV Send: {status}")
@@ -93,14 +94,29 @@ class Shell(cmd.Cmd):
             )
 
             s.start()
-            self.open_devices.append(s)
+            self.open_audio_devices.append(s)
+        elif inp in self.midi_inputs and out in self.midi_outputs:
+            # Midi stream direct patch
+            outport = mido.open_output(self.midi_outputs[out])
+            def midipass(message):
+                print(message)
+                outport.send(message)
+            inport = mido.open_input(self.midi_inputs[inp], callback=midipass)
+
+            self.open_midi_devices.append(outport)
+            self.open_midi_devices.append(inport)
+        else:
+            # CV Channel downsampling
+            print("CV Channel downsampling not yet implemented.")
 
     def do_reset(self, arg):
         "Reset all audio routing."
-        while self.open_devices:
-            s = self.open_devices.pop()
+        while self.open_audio_devices:
+            s = self.open_audio_devices.pop()
             s.stop()
             s.close()
+        while self.open_midi_devices:
+            self.open_midi_devices.pop().close()
 
     def do_exit(self, arg):
         "Close all open audio devices and exit the shell."
