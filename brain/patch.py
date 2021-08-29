@@ -8,16 +8,6 @@ import sounddevice as sd
 class Shell(cmd.Cmd):
     intro = "Welcome to the audio routing shell.   Type help or ? to list commands.\n"
     prompt = "☢️ "
-    audio_inputs = {
-        str(i): d
-        for i, d in enumerate(sd.query_devices())
-        if d["max_input_channels"] != 0 and d["hostapi"] == 0
-    }
-    audio_outputs = {
-        str(i): d
-        for i, d in enumerate(sd.query_devices())
-        if d["max_output_channels"] != 0 and d["hostapi"] == 0
-    }
     midi_inputs = {f"m{i}": d for i, d in enumerate(mido.get_input_names())}
     midi_outputs = {
         f"m{i + len(mido.get_input_names())}": d
@@ -25,6 +15,20 @@ class Shell(cmd.Cmd):
     }
     open_audio_devices = []
     open_midi_devices = []
+
+    def __init__(self, api_index):
+        self.api_index = api_index
+        self.audio_inputs = {
+            str(i): d
+            for i, d in enumerate(sd.query_devices())
+            if d["max_input_channels"] != 0 and d["hostapi"] == api_index
+        }
+        self.audio_outputs = {
+            str(i): d
+            for i, d in enumerate(sd.query_devices())
+            if d["max_output_channels"] != 0 and d["hostapi"] == api_index
+        }
+        super().__init__()
 
     def do_list(self, arg):
         "List the attached midi and audio devices."
@@ -128,7 +132,17 @@ class Shell(cmd.Cmd):
 
 
 def main():
-    Shell().cmdloop()
+    hostapis = [api['name'] for api in sd.query_hostapis()]
+    for api in ['Windows WASAPI', 'MME', "Windows DirectSound"]:
+        try:
+            api_index = hostapis.index(api)
+            break
+        except ValueError:
+            pass
+    else:
+        print("Acceptable hostapi not found.")
+        exit(-1)
+    Shell(api_index).cmdloop()
 
 
 if __name__ == "__main__":
