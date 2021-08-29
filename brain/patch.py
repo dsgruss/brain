@@ -102,9 +102,11 @@ class Shell(cmd.Cmd):
         elif inp in self.midi_inputs and out in self.midi_outputs:
             # Midi stream direct patch
             outport = mido.open_output(self.midi_outputs[out])
+
             def midipass(message):
-                print(message)
+                # print(message)
                 outport.send(message)
+
             inport = mido.open_input(self.midi_inputs[inp], callback=midipass)
 
             self.open_midi_devices.append(outport)
@@ -132,8 +134,8 @@ class Shell(cmd.Cmd):
 
 
 def main():
-    hostapis = [api['name'] for api in sd.query_hostapis()]
-    for api in ['Windows WASAPI', 'MME', "Windows DirectSound"]:
+    hostapis = [api["name"] for api in sd.query_hostapis()]
+    for api in ["Windows WASAPI", "MME", "Windows DirectSound"]:
         try:
             api_index = hostapis.index(api)
             break
