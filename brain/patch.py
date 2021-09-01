@@ -66,12 +66,29 @@ class Shell(cmd.Cmd):
             def passcallback(indata, outdata, frames, time, status):
                 if status:
                     print(f"\nPassthrough: {status}")
-                outdata[:] = indata
+                _, inChannels = indata.shape
+                _, outChannels = outdata.shape
+                if inChannels == outChannels:
+                    outdata[:] = indata
+                elif outChannels == 2:
+                    # Perform a mixdown for monitoring
+                    # print(f"\nMixdown: in {inChannels}, out {outChannels}")
+                    # print(indata)
+                    # print(outdata)
+                    outdata[:] = np.zeros(outdata.shape)
+                    for i in range(inChannels):
+                        outdata[:, 0] += indata[:, i]
+                        outdata[:, 1] += indata[:, i]
+                    # print(outdata)
+                    # exit(0)
+                elif inChannels < outChannels:
+                    outdata[:, :inChannels] = indata
+                else:
+                    print(f"\nInconsistent channel sizes: in {inChannels}, out {outChannels}")
 
             s = sd.Stream(
                 device=(int(inp), int(out)),
                 samplerate=48000,
-                channels=2,
                 latency=0.030,
                 callback=passcallback,
             )
