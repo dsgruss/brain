@@ -6,8 +6,9 @@ import sounddevice as sd
 import socket
 import time
 import threading
+import binascii
 
-from queue import Queue
+import queue
 
 class Shell(cmd.Cmd):
     intro = "Welcome to the audio routing shell.   Type help or ? to list commands.\n"
@@ -22,6 +23,7 @@ class Shell(cmd.Cmd):
     eth_inputs = {"e0": ("10.0.0.2", 1234)}
     eth_outputs = {"e1": ("10.0.0.3", 10000)}
     open_udp_sockets = []
+    active_threads = []
 
     def __init__(self, api_index):
         self.api_index = api_index
@@ -158,31 +160,48 @@ class Shell(cmd.Cmd):
             self.open_audio_devices.append(s)
         elif inp in self.eth_inputs and out in self.audio_outputs:
 
-            buffer = Queue()
+            blocksize = 960
+            buffersize = 5
+            samplerate = 48000
+            q = queue.Queue(maxsize=buffersize)
 
             def recv_thread():
                 sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
                 # sock.setblocking(False)
                 sock.bind(self.eth_inputs[inp])
 
-                while True:
-                    # try:
-                    msg, addr = sock.recvfrom(108)
-                    # except BlockingIOError:
-                    #     continue
-                    buffer.put(msg[12:])
+                outbuffer = bytes()
 
-            s = sd.RawOutputStream(device=int(out), samplerate=48000, channels=1, dtype=np.int16, latency=0.030)
-            s.start()
+                while True:
+                    msg, addr = sock.recvfrom(108)
+                    outbuffer += msg[12:]
+                    if len(outbuffer) == blocksize * 2:
+                        q.put(outbuffer)
+                        outbuffer = bytes()
+
+            def audio_in_eth_callback(outdata, frames, time, status):
+                assert frames == blocksize
+                if status.output_underflow:
+                    print('Output underflow: increase blocksize?')
+                    raise sd.CallbackAbort
+                assert not status
+                try:
+                    data = q.get_nowait()
+                except queue.Empty as e:
+                    print('Buffer is empty: increase buffersize?')
+                    raise sd.CallbackAbort from e
+                # print(len(data), len(outdata))
+                assert len(data) == len(outdata)
+                outdata[:] = data
+
+            s = sd.RawOutputStream(device=int(out), samplerate=samplerate, channels=1, dtype="int16", blocksize=blocksize, callback=audio_in_eth_callback)
+            
             self.open_audio_devices.append(s)
 
-            def audio_in_eth_callback():
-                while True:
-                    while buffer.qsize():
-                        s.write(buffer.get())
-
-            threading.Thread(target=recv_thread).start()
-            threading.Thread(target=audio_in_eth_callback).start()
+            threading.Thread(target=recv_thread, daemon=True).start()
+            while not q.full():
+                pass
+            s.start()
         else:
             print("Not yet implemented.")
 
