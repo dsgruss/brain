@@ -4,11 +4,9 @@ import numpy as np
 import readline
 import sounddevice as sd
 import socket
-import time
 import threading
-import binascii
-
 import queue
+
 
 class Shell(cmd.Cmd):
     intro = "Welcome to the audio routing shell.   Type help or ? to list commands.\n"
@@ -70,10 +68,18 @@ class Shell(cmd.Cmd):
             print("Incorrect number of parameters:  patch <input> <output>")
         inp = arg.split()[0]
         out = arg.split()[1]
-        if inp not in self.midi_inputs and inp not in self.audio_inputs and inp not in self.eth_inputs:
+        if (
+            inp not in self.midi_inputs
+            and inp not in self.audio_inputs
+            and inp not in self.eth_inputs
+        ):
             print(f"Invalid input parameter:  {inp}")
             return
-        if out not in self.midi_outputs and out not in self.audio_outputs and out not in self.eth_outputs:
+        if (
+            out not in self.midi_outputs
+            and out not in self.audio_outputs
+            and out not in self.eth_outputs
+        ):
             print(f"Invalid output parameter: {out}")
             return
 
@@ -88,19 +94,16 @@ class Shell(cmd.Cmd):
                     outdata[:] = indata
                 elif outChannels == 2:
                     # Perform a mixdown for monitoring
-                    # print(f"\nMixdown: in {inChannels}, out {outChannels}")
-                    # print(indata)
-                    # print(outdata)
                     outdata[:] = np.zeros(outdata.shape)
                     for i in range(inChannels):
                         outdata[:, 0] += indata[:, i] / inChannels
                         outdata[:, 1] += indata[:, i] / inChannels
-                    # print(outdata)
-                    # exit(0)
                 elif inChannels < outChannels:
                     outdata[:, :inChannels] = indata
                 else:
-                    print(f"\nInconsistent channel sizes: in {inChannels}, out {outChannels}")
+                    print(
+                        f"\nInconsistent channel sizes: in {inChannels}, out {outChannels}"
+                    )
 
             s = sd.Stream(
                 device=(int(inp), int(out)),
@@ -153,9 +156,18 @@ class Shell(cmd.Cmd):
                     print(f"Audio -> Ethernet: {status}")
                 rtp_header = bytes("############", "ASCII")
                 for i in range(0, len(indata), 96):
-                    sock.sendto(rtp_header + indata[i:(i+96)], self.eth_outputs[out])
+                    sock.sendto(
+                        rtp_header + indata[i : (i + 96)], self.eth_outputs[out]
+                    )
 
-            s = sd.RawInputStream(device=int(inp), samplerate=48000, channels=1, dtype=np.int16, latency=0.030, callback=audio_eth_callback)
+            s = sd.RawInputStream(
+                device=int(inp),
+                samplerate=48000,
+                channels=1,
+                dtype=np.int16,
+                latency=0.030,
+                callback=audio_eth_callback,
+            )
             s.start()
             self.open_audio_devices.append(s)
         elif inp in self.eth_inputs and out in self.audio_outputs:
@@ -167,7 +179,6 @@ class Shell(cmd.Cmd):
 
             def recv_thread():
                 sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-                # sock.setblocking(False)
                 sock.bind(self.eth_inputs[inp])
 
                 outbuffer = bytes()
@@ -182,20 +193,26 @@ class Shell(cmd.Cmd):
             def audio_in_eth_callback(outdata, frames, time, status):
                 assert frames == blocksize
                 if status.output_underflow:
-                    print('Output underflow: increase blocksize?')
+                    print("Output underflow: increase blocksize?")
                     raise sd.CallbackAbort
                 assert not status
                 try:
                     data = q.get_nowait()
                 except queue.Empty as e:
-                    print('Buffer is empty: increase buffersize?')
+                    print("Buffer is empty: increase buffersize?")
                     raise sd.CallbackAbort from e
-                # print(len(data), len(outdata))
                 assert len(data) == len(outdata)
                 outdata[:] = data
 
-            s = sd.RawOutputStream(device=int(out), samplerate=samplerate, channels=1, dtype="int16", blocksize=blocksize, callback=audio_in_eth_callback)
-            
+            s = sd.RawOutputStream(
+                device=int(out),
+                samplerate=samplerate,
+                channels=1,
+                dtype="int16",
+                blocksize=blocksize,
+                callback=audio_in_eth_callback,
+            )
+
             self.open_audio_devices.append(s)
 
             threading.Thread(target=recv_thread, daemon=True).start()
