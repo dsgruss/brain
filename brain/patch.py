@@ -3,7 +3,11 @@ import mido
 import numpy as np
 import readline
 import sounddevice as sd
+import socket
+import time
+import threading
 
+from queue import Queue
 
 class Shell(cmd.Cmd):
     intro = "Welcome to the audio routing shell.   Type help or ? to list commands.\n"
@@ -15,6 +19,9 @@ class Shell(cmd.Cmd):
     }
     open_audio_devices = []
     open_midi_devices = []
+    eth_inputs = {"e0": ("10.0.0.2", 1234)}
+    eth_outputs = {"e1": ("10.0.0.3", 10000)}
+    open_udp_sockets = []
 
     def __init__(self, api_index):
         self.api_index = api_index
@@ -47,6 +54,13 @@ class Shell(cmd.Cmd):
             print("Audio output devices:")
             for k, v in self.audio_outputs.items():
                 print(f"    {k}:  {v['name']}")
+        if arg == "eth" or arg == "":
+            print("Ethernet audio inputs:")
+            for k, v in self.eth_inputs.items():
+                print(f"    {k}: {v}")
+            print("Ethernet audio outputs:")
+            for k, v in self.eth_outputs.items():
+                print(f"    {k}: {v}")
 
     def do_patch(self, arg):
         "Connect two audio devices together:  patch <input> <output>"
@@ -54,10 +68,10 @@ class Shell(cmd.Cmd):
             print("Incorrect number of parameters:  patch <input> <output>")
         inp = arg.split()[0]
         out = arg.split()[1]
-        if inp not in self.midi_inputs and inp not in self.audio_inputs:
+        if inp not in self.midi_inputs and inp not in self.audio_inputs and inp not in self.eth_inputs:
             print(f"Invalid input parameter:  {inp}")
             return
-        if out not in self.midi_outputs and out not in self.audio_outputs:
+        if out not in self.midi_outputs and out not in self.audio_outputs and out not in self.eth_outputs:
             print(f"Invalid output parameter: {out}")
             return
 
@@ -77,8 +91,8 @@ class Shell(cmd.Cmd):
                     # print(outdata)
                     outdata[:] = np.zeros(outdata.shape)
                     for i in range(inChannels):
-                        outdata[:, 0] += indata[:, i]
-                        outdata[:, 1] += indata[:, i]
+                        outdata[:, 0] += indata[:, i] / inChannels
+                        outdata[:, 1] += indata[:, i] / inChannels
                     # print(outdata)
                     # exit(0)
                 elif inChannels < outChannels:
@@ -128,9 +142,49 @@ class Shell(cmd.Cmd):
 
             self.open_midi_devices.append(outport)
             self.open_midi_devices.append(inport)
+        elif inp in self.audio_inputs and out in self.eth_outputs:
+            sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+            sock.setblocking(False)
+
+            def audio_eth_callback(indata, frames, t, status):
+                if status:
+                    print(f"Audio -> Ethernet: {status}")
+                rtp_header = bytes("############", "ASCII")
+                for i in range(0, len(indata), 96):
+                    sock.sendto(rtp_header + indata[i:(i+96)], self.eth_outputs[out])
+
+            s = sd.RawInputStream(device=int(inp), samplerate=48000, channels=1, dtype=np.int16, latency=0.030, callback=audio_eth_callback)
+            s.start()
+            self.open_audio_devices.append(s)
+        elif inp in self.eth_inputs and out in self.audio_outputs:
+
+            buffer = Queue()
+
+            def recv_thread():
+                sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+                # sock.setblocking(False)
+                sock.bind(self.eth_inputs[inp])
+
+                while True:
+                    # try:
+                    msg, addr = sock.recvfrom(108)
+                    # except BlockingIOError:
+                    #     continue
+                    buffer.put(msg[12:])
+
+            s = sd.RawOutputStream(device=int(out), samplerate=48000, channels=1, dtype=np.int16, latency=0.030)
+            s.start()
+            self.open_audio_devices.append(s)
+
+            def audio_in_eth_callback():
+                while True:
+                    while buffer.qsize():
+                        s.write(buffer.get())
+
+            threading.Thread(target=recv_thread).start()
+            threading.Thread(target=audio_in_eth_callback).start()
         else:
-            # CV Channel downsampling
-            print("CV Channel downsampling not yet implemented.")
+            print("Not yet implemented.")
 
     def do_reset(self, arg):
         "Reset all audio routing."
