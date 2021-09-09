@@ -157,13 +157,15 @@ class Shell(cmd.Cmd):
                 if status:
                     print(f"Audio -> Ethernet: {status}")
                 rtp_header = bytes("############", "ASCII")
-                for i in range(0, len(indata), 96):
+                audio_data = np.zeros((48, 8), dtype=np.int16)
+                for i in range(0, len(indata[:, 0]), 48):
+                    audio_data[:, 0] = indata[i : (i + 48), 0]
                     sock.sendto(
-                        rtp_header + indata[i : (i + 96)],
+                        rtp_header + audio_data.tobytes(),
                         (self.eth_outputs[out]["addr"], self.eth_outputs[out]["port"]),
                     )
 
-            s = sd.RawInputStream(
+            s = sd.InputStream(
                 device=int(inp),
                 samplerate=48000,
                 channels=1,
@@ -187,9 +189,9 @@ class Shell(cmd.Cmd):
                 outbuffer = bytes()
 
                 while True:
-                    msg, addr = sock.recvfrom(108)
+                    msg, addr = sock.recvfrom(12 + 8 * 48 * 2)
                     outbuffer += msg[12:]
-                    if len(outbuffer) == blocksize * 2:
+                    if len(outbuffer) == blocksize * 2 * 8:
                         q.put(outbuffer)
                         outbuffer = bytes()
 
@@ -204,14 +206,14 @@ class Shell(cmd.Cmd):
                 except queue.Empty as e:
                     print("Buffer is empty: increase buffersize?")
                     raise sd.CallbackAbort from e
-                assert len(data) == len(outdata)
-                outdata[:] = data
+                # assert len(data) == len(outdata)
+                outdata[:, 0] = np.frombuffer(data, dtype=np.int16).reshape((frames, 8))[:, 0]
 
-            s = sd.RawOutputStream(
+            s = sd.OutputStream(
                 device=int(out),
                 samplerate=samplerate,
                 channels=1,
-                dtype="int16",
+                dtype=np.int16,
                 blocksize=blocksize,
                 callback=audio_in_eth_callback,
             )
