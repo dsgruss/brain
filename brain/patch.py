@@ -6,6 +6,8 @@ import sounddevice as sd
 import socket
 import threading
 import queue
+import netifaces
+import json
 
 
 class Shell(cmd.Cmd):
@@ -18,8 +20,8 @@ class Shell(cmd.Cmd):
     }
     open_audio_devices = []
     open_midi_devices = []
-    eth_inputs = {"e0": ("10.0.0.2", 1234)}
-    eth_outputs = {"e1": ("10.0.0.3", 10000)}
+    eth_inputs = {}
+    eth_outputs = {}
     open_udp_sockets = []
     active_threads = []
 
@@ -157,7 +159,8 @@ class Shell(cmd.Cmd):
                 rtp_header = bytes("############", "ASCII")
                 for i in range(0, len(indata), 96):
                     sock.sendto(
-                        rtp_header + indata[i : (i + 96)], self.eth_outputs[out]
+                        rtp_header + indata[i : (i + 96)],
+                        (self.eth_outputs[out]["addr"], self.eth_outputs[out]["port"]),
                     )
 
             s = sd.RawInputStream(
@@ -179,7 +182,7 @@ class Shell(cmd.Cmd):
 
             def recv_thread():
                 sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-                sock.bind(self.eth_inputs[inp])
+                sock.bind((self.eth_inputs[inp]["addr"], self.eth_inputs[inp]["port"]))
 
                 outbuffer = bytes()
 
@@ -251,7 +254,38 @@ def main():
     else:
         print("Acceptable hostapi not found.")
         exit(-1)
-    Shell(api_index).cmdloop()
+    s = Shell(api_index)
+    print("Discovering network interfaces...")
+    interfaces = []
+    for interface in netifaces.interfaces():
+        interfaces_details = netifaces.ifaddresses(interface)
+        if netifaces.AF_INET in interfaces_details:
+            interfaces.extend(interfaces_details[netifaces.AF_INET])
+    # print(interfaces)
+    print("Discovering devices...")
+    identifier = 0
+    for interface in interfaces:
+        print(f"Querying on {interface['addr']}")
+        sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        sock.bind((interface["addr"], 10000))
+        sock.settimeout(1)
+        sock.sendto(b"IDENTIFY", (interface["broadcast"], 10000))
+        while True:
+            try:
+                msg, addr = sock.recvfrom(512)
+                if msg.startswith(b"IDENTIFY"):
+                    continue
+                res = json.loads(msg)
+                print(f"Got response from {addr}: {res}")
+                res["addr"] = addr[0]
+                s.eth_outputs["e" + str(identifier)] = res
+                identifier += 1
+            except socket.timeout:
+                break
+        sock.close()
+        s.eth_inputs["e" + str(identifier)] = {"addr": interface["addr"], "port": 12000}
+        identifier += 1
+    s.cmdloop()
 
 
 if __name__ == "__main__":
