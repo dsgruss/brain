@@ -9,6 +9,8 @@ import queue
 import netifaces
 import json
 
+from operator import itemgetter
+
 
 class Shell(cmd.Cmd):
     intro = "Welcome to the audio routing shell.   Type help or ? to list commands.\n"
@@ -117,7 +119,7 @@ class Shell(cmd.Cmd):
             s.start()
             self.open_audio_devices.append(s)
         elif inp in self.midi_inputs and out in self.audio_outputs:
-            # Promote midi stream to audio rate CV
+            # Promote midi stream to audio rate CV (incomplete)
             def callback(outdata, frames, time, status):
                 if status:
                     print(f"CV Send: {status}")
@@ -137,6 +139,40 @@ class Shell(cmd.Cmd):
 
             s.start()
             self.open_audio_devices.append(s)
+        elif inp in self.midi_inputs and out in self.eth_outputs:
+            # Promote midi stream to audio rate CV, streaming over ethernet
+            channels = 8
+            timestamp = [0]
+
+            voices = [{"note": 0, "on": False, "timestamp": 0} for _ in range(channels)]
+
+            def midi_to_cv_callback(message: mido.Message):
+                timestamp[0] += 1
+                if message.type == "note_off":
+                    for v in voices:
+                        if v["note"] == message.note and v["on"]:
+                            v["on"] = False
+                            v["timestamp"] = timestamp[0]
+                elif message.type == "note_on":
+                    # First see if we can take the oldest voice that has been released
+                    voices_off = sorted((v for v in voices if v["on"] == False), key=itemgetter("timestamp"))
+                    if len(voices_off) > 0:
+                        voices_off[0]["note"] = message.note
+                        voices_off[0]["on"] = True
+                        voices_off[0]["timestamp"] = timestamp[0]
+                    else:
+                        # Otherwise, steal a voice. In this case, take the oldest note played. We
+                        # also have a choice of whether to just change the pitch (done here), or to
+                        # shut the note off and retrigger.
+                        voice_steal = sorted((v for v in voices), key=itemgetter("timestamp"))[0]
+                        voice_steal["note"] = message.note
+                        voice_steal["timestamp"] = timestamp[0]
+                for v in voices:
+                    print(v)
+                print()
+
+            inport = mido.open_input(self.midi_inputs[inp], callback=midi_to_cv_callback)
+            self.open_midi_devices.append(inport)
         elif inp in self.midi_inputs and out in self.midi_outputs:
             # Midi stream direct patch
             outport = mido.open_output(self.midi_outputs[out])
@@ -150,6 +186,8 @@ class Shell(cmd.Cmd):
             self.open_midi_devices.append(outport)
             self.open_midi_devices.append(inport)
         elif inp in self.audio_inputs and out in self.eth_outputs:
+            # Audio device to ethernet stream routing
+
             sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
             sock.setblocking(False)
 
@@ -176,6 +214,7 @@ class Shell(cmd.Cmd):
             s.start()
             self.open_audio_devices.append(s)
         elif inp in self.eth_inputs and out in self.audio_outputs:
+            # Ethernet stream to audio device routing
 
             blocksize = 960
             buffersize = 5
