@@ -155,7 +155,10 @@ class Shell(cmd.Cmd):
                             v["timestamp"] = timestamp[0]
                 elif message.type == "note_on":
                     # First see if we can take the oldest voice that has been released
-                    voices_off = sorted((v for v in voices if v["on"] == False), key=itemgetter("timestamp"))
+                    voices_off = sorted(
+                        (v for v in voices if v["on"] == False),
+                        key=itemgetter("timestamp"),
+                    )
                     if len(voices_off) > 0:
                         voices_off[0]["note"] = message.note
                         voices_off[0]["on"] = True
@@ -164,14 +167,18 @@ class Shell(cmd.Cmd):
                         # Otherwise, steal a voice. In this case, take the oldest note played. We
                         # also have a choice of whether to just change the pitch (done here), or to
                         # shut the note off and retrigger.
-                        voice_steal = sorted((v for v in voices), key=itemgetter("timestamp"))[0]
+                        voice_steal = sorted(
+                            (v for v in voices), key=itemgetter("timestamp")
+                        )[0]
                         voice_steal["note"] = message.note
                         voice_steal["timestamp"] = timestamp[0]
                 for v in voices:
                     print(v)
                 print()
 
-            inport = mido.open_input(self.midi_inputs[inp], callback=midi_to_cv_callback)
+            inport = mido.open_input(
+                self.midi_inputs[inp], callback=midi_to_cv_callback
+            )
             self.open_midi_devices.append(inport)
         elif inp in self.midi_inputs and out in self.midi_outputs:
             # Midi stream direct patch
@@ -246,7 +253,9 @@ class Shell(cmd.Cmd):
                     print("Buffer is empty: increase buffersize?")
                     raise sd.CallbackAbort from e
                 # assert len(data) == len(outdata)
-                outdata[:, 0] = np.frombuffer(data, dtype=np.int16).reshape((frames, 8))[:, 0]
+                outdata[:, 0] = np.frombuffer(data, dtype=np.int16).reshape(
+                    (frames, 8)
+                )[:, 0]
 
             s = sd.OutputStream(
                 device=int(out),
