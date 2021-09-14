@@ -61,10 +61,10 @@ class Shell(cmd.Cmd):
         if arg == "eth" or arg == "":
             print("Ethernet audio inputs:")
             for k, v in self.eth_inputs.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {v['device']} - {v['name']} @ {v['addr']}")
             print("Ethernet audio outputs:")
             for k, v in self.eth_outputs.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {v['device']} - {v['name']} @ {v['addr']}:{v['port']}")
 
     def do_patch(self, arg):
         "Connect two audio devices together:  patch <input> <output>"
@@ -143,6 +143,7 @@ class Shell(cmd.Cmd):
             # Promote midi stream to audio rate CV, streaming over ethernet
             channels = 8
             timestamp = [0]
+            sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
             voices = [{"note": 0, "on": False, "timestamp": 0} for _ in range(channels)]
 
@@ -172,9 +173,25 @@ class Shell(cmd.Cmd):
                         )[0]
                         voice_steal["note"] = message.note
                         voice_steal["timestamp"] = timestamp[0]
-                for v in voices:
-                    print(v)
-                print()
+                # for v in voices:
+                #     print(v)
+                # print()
+                # Send the data as CV over two ports. In the future, these should be routed
+                # separately, but for now we will just assume they are contiguous.
+                rtp_header = bytes("############", "ASCII")
+                voct_data = np.zeros((1, 8), dtype=np.int16)
+                level_data = np.zeros((1, 8), dtype=np.int16)
+                for i, v in enumerate(voices):
+                    voct_data[0, i] = v["note"] * 256
+                    level_data[0, i] = 16000 if v["on"] else 0
+                sock.sendto(
+                    rtp_header + voct_data.tobytes(),
+                    (self.eth_outputs[out]["addr"], self.eth_outputs[out]["port"]),
+                )
+                sock.sendto(
+                    rtp_header + level_data.tobytes(),
+                    (self.eth_outputs[out]["addr"], self.eth_outputs[out]["port"] + 1),
+                )
 
             inport = mido.open_input(
                 self.midi_inputs[inp], callback=midi_to_cv_callback
@@ -266,9 +283,8 @@ class Shell(cmd.Cmd):
                     print("Buffer is empty: increase buffersize?")
                     raise sd.CallbackAbort from e
                 # assert len(data) == len(outdata)
-                outdata[:, 0] = np.frombuffer(data, dtype=np.int16).reshape(
-                    (frames, 8)
-                )[:, 0]
+                res = np.frombuffer(data, dtype=np.int16).reshape((frames, 8))
+                outdata[:, 0] = sum(res[:, i] / 4 for i in range(8))
 
             s = sd.OutputStream(
                 device=int(out),
@@ -285,6 +301,22 @@ class Shell(cmd.Cmd):
             while not q.full():
                 pass
             s.start()
+        elif inp in self.eth_inputs and out in self.eth_outputs:
+            # Send a control message to link two devices
+            dev_in = self.eth_inputs[inp]
+            dev_out = self.eth_outputs[out]
+
+            control_sock = socket.socket(
+                family=socket.AF_INET, type=socket.SOCK_DGRAM
+            )
+            control_sock.sendto(
+                b"REQUEST   "
+                + socket.inet_aton(dev_out["addr"])
+                + int.to_bytes(dev_out["port"], 2, "big")
+                + int.to_bytes(dev_in["id"], 1, "big"),
+                (dev_in["addr"], 10000),
+            )
+            control_sock.close()
         else:
             print("Not yet implemented.")
 
@@ -335,7 +367,7 @@ def main():
         sock.sendto(b"IDENTIFY", (interface["broadcast"], 10000))
         while True:
             try:
-                msg, addr = sock.recvfrom(512)
+                msg, addr = sock.recvfrom(1500)
                 if msg.startswith(b"IDENTIFY"):
                     continue
                 res = json.loads(msg)
