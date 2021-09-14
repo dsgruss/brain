@@ -306,9 +306,7 @@ class Shell(cmd.Cmd):
             dev_in = self.eth_inputs[inp]
             dev_out = self.eth_outputs[out]
 
-            control_sock = socket.socket(
-                family=socket.AF_INET, type=socket.SOCK_DGRAM
-            )
+            control_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
             control_sock.sendto(
                 b"REQUEST   "
                 + socket.inet_aton(dev_out["addr"])
