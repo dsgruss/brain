@@ -229,8 +229,21 @@ class Shell(cmd.Cmd):
             q = queue.Queue(maxsize=buffersize)
 
             def recv_thread():
+                dev = self.eth_inputs[inp]
                 sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-                sock.bind((self.eth_inputs[inp]["addr"], self.eth_inputs[inp]["port"]))
+                sock.bind((dev["local_addr"], 12000))
+
+                control_sock = socket.socket(
+                    family=socket.AF_INET, type=socket.SOCK_DGRAM
+                )
+                control_sock.sendto(
+                    b"REQUEST   "
+                    + socket.inet_aton(dev["local_addr"])
+                    + int.to_bytes(12000, 2, "big")
+                    + int.to_bytes(dev["id"], 1, "big"),
+                    (dev["addr"], 10000),
+                )
+                control_sock.close()
 
                 outbuffer = bytes()
 
@@ -327,14 +340,21 @@ def main():
                     continue
                 res = json.loads(msg)
                 print(f"Got response from {addr}: {res}")
-                res["addr"] = addr[0]
-                s.eth_outputs["e" + str(identifier)] = res
-                identifier += 1
+                for v in res["inputs"]:
+                    v["addr"] = addr[0]
+                    v["device"] = res["name"]
+                    v["local_addr"] = interface["addr"]
+                    s.eth_outputs["e" + str(identifier)] = v
+                    identifier += 1
+                for v in res["outputs"]:
+                    v["addr"] = addr[0]
+                    v["device"] = res["name"]
+                    v["local_addr"] = interface["addr"]
+                    s.eth_inputs["e" + str(identifier)] = v
+                    identifier += 1
             except socket.timeout:
                 break
         sock.close()
-        s.eth_inputs["e" + str(identifier)] = {"addr": interface["addr"], "port": 12000}
-        identifier += 1
     s.cmdloop()
 
 
