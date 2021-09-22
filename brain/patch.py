@@ -1,5 +1,4 @@
 import cmd
-import mido
 import numpy as np
 import readline
 import sounddevice as sd
@@ -15,13 +14,8 @@ from operator import itemgetter
 class Shell(cmd.Cmd):
     intro = "Welcome to the audio routing shell.   Type help or ? to list commands.\n"
     prompt = "☢️ "
-    midi_inputs = {f"m{i}": d for i, d in enumerate(mido.get_input_names())}
-    midi_outputs = {
-        f"m{i + len(mido.get_input_names())}": d
-        for i, d in enumerate(mido.get_output_names())
-    }
+
     open_audio_devices = []
-    open_midi_devices = []
     eth_inputs = {}
     eth_outputs = {}
     open_udp_sockets = []
@@ -42,14 +36,7 @@ class Shell(cmd.Cmd):
         super().__init__()
 
     def do_list(self, arg):
-        "List the attached midi and audio devices."
-        if arg == "midi" or arg == "":
-            print("MIDI input devices:")
-            for k, v in self.midi_inputs.items():
-                print(f"    {k}: {v}")
-            print("MIDI output devices:")
-            for k, v in self.midi_outputs.items():
-                print(f"    {k}: {v}")
+        "List the attached audio devices and discovered ethernet devices."
         if arg == "input" or arg == "":
             print("Audio input devices:")
             for k, v in self.audio_inputs.items():
@@ -73,15 +60,13 @@ class Shell(cmd.Cmd):
         inp = arg.split()[0]
         out = arg.split()[1]
         if (
-            inp not in self.midi_inputs
-            and inp not in self.audio_inputs
+            inp not in self.audio_inputs
             and inp not in self.eth_inputs
         ):
             print(f"Invalid input parameter:  {inp}")
             return
         if (
-            out not in self.midi_outputs
-            and out not in self.audio_outputs
+            out not in self.audio_outputs
             and out not in self.eth_outputs
         ):
             print(f"Invalid output parameter: {out}")
@@ -118,97 +103,6 @@ class Shell(cmd.Cmd):
 
             s.start()
             self.open_audio_devices.append(s)
-        elif inp in self.midi_inputs and out in self.audio_outputs:
-            # Promote midi stream to audio rate CV (incomplete)
-            def callback(outdata, frames, time, status):
-                if status:
-                    print(f"CV Send: {status}")
-
-                # msg.pitch (note) * 256 + msg.pitch (pitchwheel) / 32
-                outdata[:, 0].fill(50 * 256)
-                outdata[:, 1].fill(16000)
-
-            s = sd.OutputStream(
-                device=int(out),
-                samplerate=48000,
-                channels=2,
-                dtype=np.int16,
-                latency=0.030,
-                callback=callback,
-            )
-
-            s.start()
-            self.open_audio_devices.append(s)
-        elif inp in self.midi_inputs and out in self.eth_outputs:
-            # Promote midi stream to audio rate CV, streaming over ethernet
-            channels = 8
-            timestamp = [0]
-            sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-
-            voices = [{"note": 0, "on": False, "timestamp": 0} for _ in range(channels)]
-
-            def midi_to_cv_callback(message: mido.Message):
-                timestamp[0] += 1
-                if message.type == "note_off":
-                    for v in voices:
-                        if v["note"] == message.note and v["on"]:
-                            v["on"] = False
-                            v["timestamp"] = timestamp[0]
-                elif message.type == "note_on":
-                    # First see if we can take the oldest voice that has been released
-                    voices_off = sorted(
-                        (v for v in voices if v["on"] == False),
-                        key=itemgetter("timestamp"),
-                    )
-                    if len(voices_off) > 0:
-                        voices_off[0]["note"] = message.note
-                        voices_off[0]["on"] = True
-                        voices_off[0]["timestamp"] = timestamp[0]
-                    else:
-                        # Otherwise, steal a voice. In this case, take the oldest note played. We
-                        # also have a choice of whether to just change the pitch (done here), or to
-                        # shut the note off and retrigger.
-                        voice_steal = sorted(
-                            (v for v in voices), key=itemgetter("timestamp")
-                        )[0]
-                        voice_steal["note"] = message.note
-                        voice_steal["timestamp"] = timestamp[0]
-                # for v in voices:
-                #     print(v)
-                # print()
-                # Send the data as CV over two ports. In the future, these should be routed
-                # separately, but for now we will just assume they are contiguous.
-                rtp_header = bytes("############", "ASCII")
-                voct_data = np.zeros((1, 8), dtype=np.int16)
-                level_data = np.zeros((1, 8), dtype=np.int16)
-                for i, v in enumerate(voices):
-                    voct_data[0, i] = v["note"] * 256
-                    level_data[0, i] = 16000 if v["on"] else 0
-                sock.sendto(
-                    rtp_header + voct_data.tobytes(),
-                    (self.eth_outputs[out]["addr"], self.eth_outputs[out]["port"]),
-                )
-                sock.sendto(
-                    rtp_header + level_data.tobytes(),
-                    (self.eth_outputs[out]["addr"], self.eth_outputs[out]["port"] + 1),
-                )
-
-            inport = mido.open_input(
-                self.midi_inputs[inp], callback=midi_to_cv_callback
-            )
-            self.open_midi_devices.append(inport)
-        elif inp in self.midi_inputs and out in self.midi_outputs:
-            # Midi stream direct patch
-            outport = mido.open_output(self.midi_outputs[out])
-
-            def midipass(message):
-                # print(message)
-                outport.send(message)
-
-            inport = mido.open_input(self.midi_inputs[inp], callback=midipass)
-
-            self.open_midi_devices.append(outport)
-            self.open_midi_devices.append(inport)
         elif inp in self.audio_inputs and out in self.eth_outputs:
             # Audio device to ethernet stream routing
 
@@ -241,7 +135,7 @@ class Shell(cmd.Cmd):
             # Ethernet stream to audio device routing
 
             blocksize = 960
-            buffersize = 5
+            buffersize = 2
             samplerate = 48000
             q = queue.Queue(maxsize=buffersize)
 
@@ -280,8 +174,9 @@ class Shell(cmd.Cmd):
                 try:
                     data = q.get_nowait()
                 except queue.Empty as e:
-                    print("Buffer is empty: increase buffersize?")
-                    raise sd.CallbackAbort from e
+                    print("\nBuffer is empty: increase buffersize?")
+                    outdata[:] = np.zeros(outdata.shape)
+                    return
                 # assert len(data) == len(outdata)
                 res = np.frombuffer(data, dtype=np.int16).reshape((frames, 8))
                 outdata[:, 0] = sum(res[:, i] / 4 for i in range(8))
@@ -324,8 +219,6 @@ class Shell(cmd.Cmd):
             s = self.open_audio_devices.pop()
             s.stop()
             s.close()
-        while self.open_midi_devices:
-            self.open_midi_devices.pop().close()
 
     def do_exit(self, arg):
         "Close all open audio devices and exit the shell."
@@ -360,7 +253,7 @@ def main():
     for interface in interfaces:
         print(f"Querying on {interface['addr']}")
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        sock.bind((interface["addr"], 10000))
+        sock.bind((interface["addr"], 12525))
         sock.settimeout(1)
         sock.sendto(b"IDENTIFY", (interface["broadcast"], 10000))
         while True:
