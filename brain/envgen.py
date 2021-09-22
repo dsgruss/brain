@@ -23,6 +23,7 @@ liftdest = []
 piwhdest = []
 mdwhdest = []
 
+
 def midi_to_cv_callback(message: mido.Message):
     timestamp[0] += 1
     if message.type == "note_off":
@@ -44,9 +45,7 @@ def midi_to_cv_callback(message: mido.Message):
             # Otherwise, steal a voice. In this case, take the oldest note played. We
             # also have a choice of whether to just change the pitch (done here), or to
             # shut the note off and retrigger.
-            voice_steal = sorted(
-                (v for v in voices), key=itemgetter("timestamp")
-            )[0]
+            voice_steal = sorted((v for v in voices), key=itemgetter("timestamp"))[0]
             voice_steal["note"] = message.note
             voice_steal["timestamp"] = timestamp[0]
 
@@ -61,6 +60,7 @@ def midi_to_cv_callback(message: mido.Message):
         sock.sendto(rtp_header + voct_data.tobytes(), loc)
     for loc in gatedest:
         sock.sendto(rtp_header + level_data.tobytes(), loc)
+
 
 print("Opening all midi inputs by default.")
 for inp in mido.get_input_names():
@@ -118,7 +118,7 @@ def control_thread():
                 "channels": 1,
                 "samplerate": 48000,
                 "format": "L16",
-            }
+            },
         ],
     }
 
@@ -130,7 +130,9 @@ def control_thread():
             print("Identification command received.")
             sock.sendto(bytes(json.dumps(env), "utf8"), addr)
         elif msg.startswith(b"REQUEST"):
-            directive, destination_address, destination_port, id = unpack("!10s4shB", msg)
+            directive, destination_address, destination_port, id = unpack(
+                "!10s4shB", msg
+            )
             address = (socket.inet_ntoa(destination_address), destination_port)
             if id == 0:
                 notedest.append(address)
@@ -144,6 +146,7 @@ def control_thread():
                 piwhdest.append(address)
             elif id == 5:
                 mdwhdest.append(address)
+
 
 threading.Thread(target=control_thread, daemon=True).start()
 while True:

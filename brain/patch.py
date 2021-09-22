@@ -59,16 +59,10 @@ class Shell(cmd.Cmd):
             print("Incorrect number of parameters:  patch <input> <output>")
         inp = arg.split()[0]
         out = arg.split()[1]
-        if (
-            inp not in self.audio_inputs
-            and inp not in self.eth_inputs
-        ):
+        if inp not in self.audio_inputs and inp not in self.eth_inputs:
             print(f"Invalid input parameter:  {inp}")
             return
-        if (
-            out not in self.audio_outputs
-            and out not in self.eth_outputs
-        ):
+        if out not in self.audio_outputs and out not in self.eth_outputs:
             print(f"Invalid output parameter: {out}")
             return
 
