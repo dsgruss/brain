@@ -3,16 +3,23 @@ import mido
 import numpy as np
 import socket
 import threading
+import time
 
 from operator import itemgetter
 from struct import unpack
 
 # Promote midi stream to audio rate CV, streaming over ethernet
 channels = 8
+updatefreq = 1000  # Hz
+atime = 0.25  # sec
+rtime = 1.00  # sec
 timestamp = [0]
 sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-voices = [{"note": 0, "on": False, "timestamp": 0} for _ in range(channels)]
+voices = [
+    {"note": 0, "on": False, "timestamp": 0, "env": 0, "envupdate": time.time()}
+    for _ in range(channels)
+]
 
 # List of destination address:ports configured for each output
 
@@ -22,6 +29,7 @@ velodest = []
 liftdest = []
 piwhdest = []
 mdwhdest = []
+asredest = []
 
 
 def midi_to_cv_callback(message: mido.Message):
@@ -49,17 +57,42 @@ def midi_to_cv_callback(message: mido.Message):
             voice_steal["note"] = message.note
             voice_steal["timestamp"] = timestamp[0]
 
-    # Send the data as CV over over all requested ports and addresses.
-    rtp_header = bytes("############", "ASCII")
-    voct_data = np.zeros((1, 8), dtype=np.int16)
-    level_data = np.zeros((1, 8), dtype=np.int16)
-    for i, v in enumerate(voices):
-        voct_data[0, i] = v["note"] * 256
-        level_data[0, i] = 16000 if v["on"] else 0
-    for loc in notedest:
-        sock.sendto(rtp_header + voct_data.tobytes(), loc)
-    for loc in gatedest:
-        sock.sendto(rtp_header + level_data.tobytes(), loc)
+
+def output_thread():
+    # Send the data as CV over over all requested ports and addresses at the configured sample rate
+
+    while True:
+        currtime = time.time()
+        rtp_header = bytes("############", "ASCII")
+        voct_data = np.zeros((1, 8), dtype=np.int16)
+        gate_data = np.zeros((1, 8), dtype=np.int16)
+        level_data = np.zeros((1, 8), dtype=np.int16)
+        for i, v in enumerate(voices):
+            voct_data[0, i] = v["note"] * 256
+            gate_data[0, i] = 16000 if v["on"] else 0
+            if gate_data[0, i] > v["env"]:
+                v["env"] = min(
+                    gate_data[0, i],
+                    v["env"] + (currtime - v["envupdate"]) / atime * 16000,
+                )
+            else:
+                v["env"] = max(
+                    gate_data[0, i],
+                    v["env"] - (currtime - v["envupdate"]) / rtime * 16000,
+                )
+            level_data[0, i] = v["env"]
+            v["envupdate"] = currtime
+        for loc in notedest:
+            sock.sendto(rtp_header + voct_data.tobytes(), loc)
+        for loc in gatedest:
+            sock.sendto(rtp_header + gate_data.tobytes(), loc)
+        for loc in asredest:
+            sock.sendto(rtp_header + level_data.tobytes(), loc)
+        dtime = time.time() - currtime
+        if dtime > (1 / updatefreq):
+            continue
+        else:
+            time.sleep((1 / updatefreq) - dtime)
 
 
 print("Opening all midi inputs by default.")
@@ -80,43 +113,50 @@ def control_thread():
             {
                 "id": 0,
                 "name": "Note",
-                "channels": 8,
-                "samplerate": 48000,
+                "channels": channels,
+                "samplerate": updatefreq,
                 "format": "L16",
             },
             {
                 "id": 1,
                 "name": "Gate",
-                "channels": 8,
-                "samplerate": 48000,
+                "channels": channels,
+                "samplerate": updatefreq,
                 "format": "L16",
             },
             {
                 "id": 2,
                 "name": "Velocity",
-                "channels": 8,
-                "samplerate": 48000,
+                "channels": channels,
+                "samplerate": updatefreq,
                 "format": "L16",
             },
             {
                 "id": 3,
                 "name": "Lift",
-                "channels": 8,
-                "samplerate": 48000,
+                "channels": channels,
+                "samplerate": updatefreq,
                 "format": "L16",
             },
             {
                 "id": 4,
                 "name": "Pitch Wheel",
                 "channels": 1,
-                "samplerate": 48000,
+                "samplerate": updatefreq,
                 "format": "L16",
             },
             {
                 "id": 5,
                 "name": "Mod Wheel",
                 "channels": 1,
-                "samplerate": 48000,
+                "samplerate": updatefreq,
+                "format": "L16",
+            },
+            {
+                "id": 6,
+                "name": "ASR Envelope",
+                "channels": channels,
+                "samplerate": updatefreq,
                 "format": "L16",
             },
         ],
@@ -146,8 +186,11 @@ def control_thread():
                 piwhdest.append(address)
             elif id == 5:
                 mdwhdest.append(address)
+            elif id == 6:
+                asredest.append(address)
 
 
 threading.Thread(target=control_thread, daemon=True).start()
+threading.Thread(target=output_thread, daemon=True).start()
 while True:
     pass
