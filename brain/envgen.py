@@ -10,9 +10,9 @@ from struct import unpack
 
 # Promote midi stream to audio rate CV, streaming over ethernet
 channels = 8
-updatefreq = 1000  # Hz
-atime = 0.25  # sec
-rtime = 1.00  # sec
+updatefreq = 4000  # Hz
+atime = 0.05  # sec
+rtime = 0.25  # sec
 timestamp = [0]
 sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
