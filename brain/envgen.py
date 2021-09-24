@@ -10,7 +10,7 @@ from struct import unpack
 
 # Promote midi stream to audio rate CV, streaming over ethernet
 channels = 8
-updatefreq = 4000  # Hz
+updatefreq = 1000  # Hz
 atime = 0.05  # sec
 rtime = 0.25  # sec
 timestamp = [0]
@@ -188,6 +188,14 @@ def control_thread():
                 mdwhdest.append(address)
             elif id == 6:
                 asredest.append(address)
+        elif msg.startswith(b"RESET"):
+            notedest.clear()
+            gatedest.clear()
+            velodest.clear()
+            liftdest.clear()
+            piwhdest.clear()
+            mdwhdest.clear()
+            asredest.clear()
 
 
 threading.Thread(target=control_thread, daemon=True).start()

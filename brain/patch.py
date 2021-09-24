@@ -128,7 +128,7 @@ class Shell(cmd.Cmd):
         elif inp in self.eth_inputs and out in self.audio_outputs:
             # Ethernet stream to audio device routing
 
-            blocksize = 960
+            blocksize = 480
             buffersize = 2
             samplerate = 48000
             q = queue.Queue(maxsize=buffersize)
