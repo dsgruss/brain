@@ -1,7 +1,20 @@
 import netifaces
 import socket
+import struct
+import time
 
-def find_modules() -> list[tuple[str, str, int]]:
+from dataclasses import dataclass
+
+@dataclass
+class HostModule:
+    uuid : str
+    address : str
+    port : int
+    local_address : str
+
+
+def find_modules() -> list[HostModule]:
+    """Performs a multicast broadcast on all interfaces and returns all the unique devices found."""
     MCAST_GRP = "239.255.255.250"
     MCAST_PORT = 1900
 
@@ -43,18 +56,16 @@ def find_modules() -> list[tuple[str, str, int]]:
                 lines = msg.split(b"\r\n")
                 if b"200" not in lines[0]:
                     continue
-                uuid = ""
-                ip = ""
-                port = 0
+                val = HostModule("", "", 0, interface['addr'])
                 for l in lines[1:]:
                     if l.startswith(b"LOCATION"):
                         url = l.split(b" ")[1]
                         loc = url.split(b"//")[1].split(b"/")[0]
-                        ip = loc.split(b":")[0]
-                        port = int(loc.split(b":")[1])
+                        val.address = loc.split(b":")[0]
+                        val.port = int(loc.split(b":")[1])
                     if l.startswith(b"USN"):
-                        uuid = l.split(b"::")[0].split(b":")[-1]
-                res.append((uuid, ip, port))
+                        val.uuid = l.split(b"::")[0].split(b":")[-1]
+                res.append(val)
 
         except socket.timeout:
             pass
@@ -62,12 +73,72 @@ def find_modules() -> list[tuple[str, str, int]]:
     i = 0
     seen = set()
     while i < len(res):
-        if res[i][0] not in seen:
-            seen.add(res[i][0])
+        if res[i].uuid not in seen:
+            seen.add(res[i].uuid)
             i += 1
         else:
             del res[i]
     return res
+
+def ssdp_client_thread(local_address, directive_port, uuid):
+    """Thread that responds to SSDP searches."""
+    mcast_group = "239.255.255.250"
+    mcast_port = 1900
+    sent_time = 0
+    notify_ttl = 3600
+
+    ssdp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    ssdp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
+    ssdp_sock.bind((local_address, mcast_port))
+    mreq = struct.pack("4sl", socket.inet_aton(mcast_group), socket.INADDR_ANY)
+    ssdp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+    resp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    for port in range(2000, 2010):
+        try:
+            resp_sock.bind((local_address, port))
+            break
+        except OSError:
+            continue
+    else:
+        print(f"Unable to find open port on {local_address}.")
+        exit(-1)
+    resp_sock.settimeout(1)
+
+    notify = "NOTIFY * HTTP/1.1\r\n"
+    notify += f"HOST: {mcast_group}:{mcast_port}\r\n"
+    notify += f"CACHE-CONTROL: max-age={notify_ttl}\r\n"
+    notify += f"LOCATION: udp://{local_address}:{directive_port}/\r\n"
+    notify += "NT: urn:prompt-critical:control\r\n"
+    notify += "NTS: ssdp:alive\r\n"
+    notify += "SERVER: Prompt-Critical/0.1\r\n"
+    notify += f"USN: uuid:{uuid}::urn:prompt-critical:control\r\n"
+    notify += "\r\n"
+
+    search_res = "HTTP/1.1 200 OK\r\n"
+    search_res += "ST: urn:prompt-critical:control\r\n"
+    search_res += f"LOCATION: udp://{local_address}:{directive_port}/\r\n"
+    search_res += "SERVER: Prompt-Critical/0.1\r\n"
+    search_res += f"CACHE-CONTROL: max-age={notify_ttl}\r\n"
+    search_res += f"USN: uuid:{uuid}::urn:prompt-critical:control\r\n"
+    search_res += "\r\n"
+
+    while True:
+        if (time.time() - sent_time) > notify_ttl:
+            print(f"Sending SSDP notification on {local_address}.")
+            resp_sock.sendto(bytes(notify, "ASCII"), (mcast_group, mcast_port))
+            sent_time = time.time()
+        try:
+            msg, addr = ssdp_sock.recvfrom(10240)
+            res = msg.split(b"\r\n")
+            if not res[0].startswith(b"M-SEARCH"):
+                continue
+            if b"ST: upn:prompt-critical:control" not in res:
+                continue
+            print(res, addr, local_address)
+            resp_sock.sendto(bytes(search_res, "ASCII"), addr)
+        except socket.timeout:
+            continue
 
 if __name__ == "__main__":
     print(find_modules())

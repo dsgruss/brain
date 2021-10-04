@@ -3,7 +3,7 @@ import mido
 import netifaces
 import numpy as np
 import socket
-import struct
+import ssdp
 import threading
 import time
 
@@ -58,7 +58,7 @@ class Envgen:
         time.sleep(1)
         for interface in self.interfaces:
             threading.Thread(
-                target=self.ssdp_thread, args=(interface["addr"],), daemon=True
+                target=ssdp.ssdp_client_thread, args=(interface["addr"], self.directive_port, self.uuid), daemon=True
             ).start()
         threading.Thread(target=self.output_thread, daemon=True).start()
 
@@ -233,68 +233,8 @@ class Envgen:
                 self.mdwhdest.clear()
                 self.asredest.clear()
 
-    def ssdp_thread(self, local_address):
-        # Thread that responds to SSDP searches
-        mcast_group = "239.255.255.250"
-        mcast_port = 1900
-        sent_time = 0
-        notify_ttl = 3600
-
-        ssdp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        ssdp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
-        ssdp_sock.bind((local_address, mcast_port))
-        mreq = struct.pack("4sl", socket.inet_aton(mcast_group), socket.INADDR_ANY)
-        ssdp_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-
-        resp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        for port in range(2000, 2010):
-            try:
-                resp_sock.bind((local_address, port))
-                break
-            except OSError:
-                continue
-        else:
-            print(f"Unable to find open port on {local_address}.")
-            exit(-1)
-        resp_sock.settimeout(1)
-
-        notify = "NOTIFY * HTTP/1.1\r\n"
-        notify += f"HOST: {mcast_group}:{mcast_port}\r\n"
-        notify += f"CACHE-CONTROL: max-age={notify_ttl}\r\n"
-        notify += f"LOCATION: udp://{local_address}:{self.directive_port}/\r\n"
-        notify += "NT: urn:prompt-critical:control\r\n"
-        notify += "NTS: ssdp:alive\r\n"
-        notify += "SERVER: Prompt-Critical/0.1\r\n"
-        notify += f"USN: uuid:{self.uuid}::urn:prompt-critical:control\r\n"
-        notify += "\r\n"
-
-        search_res = "HTTP/1.1 200 OK\r\n"
-        search_res += "ST: urn:prompt-critical:control\r\n"
-        search_res += f"LOCATION: udp://{local_address}:{self.directive_port}/\r\n"
-        search_res += "SERVER: Prompt-Critical/0.1\r\n"
-        search_res += f"CACHE-CONTROL: max-age={notify_ttl}\r\n"
-        search_res += f"USN: uuid:{self.uuid}::urn:prompt-critical:control\r\n"
-        search_res += "\r\n"
-
-        while True:
-            if (time.time() - sent_time) > notify_ttl:
-                print(f"Sending SSDP notification on {local_address}.")
-                resp_sock.sendto(bytes(notify, "ASCII"), (mcast_group, mcast_port))
-                sent_time = time.time()
-            try:
-                msg, addr = ssdp_sock.recvfrom(10240)
-                res = msg.split(b"\r\n")
-                if not res[0].startswith(b"M-SEARCH"):
-                    continue
-                if b"ST: upn:prompt-critical:control" not in res:
-                    continue
-                print(res, addr, local_address)
-                resp_sock.sendto(bytes(search_res, "ASCII"), addr)
-            except socket.timeout:
-                continue
-
 
 if __name__ == "__main__":
     e = Envgen()
     while True:
-        pass
+        time.sleep(1)

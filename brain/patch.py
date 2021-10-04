@@ -1,6 +1,7 @@
 import cmd
 import numpy as np
 import readline
+import ssdp
 import sounddevice as sd
 import socket
 import threading
@@ -235,42 +236,33 @@ def main():
         print("Acceptable hostapi not found.")
         exit(-1)
     s = Shell(api_index)
-    print("Discovering network interfaces...")
-    interfaces = []
-    for interface in netifaces.interfaces():
-        interfaces_details = netifaces.ifaddresses(interface)
-        if netifaces.AF_INET in interfaces_details:
-            interfaces.extend(interfaces_details[netifaces.AF_INET])
-    # print(interfaces)
     print("Discovering devices...")
+    hosts = ssdp.find_modules()
     identifier = 0
-    for interface in interfaces:
-        print(f"Querying on {interface['addr']}")
+    for h in hosts:
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        sock.bind((interface["addr"], 12525))
         sock.settimeout(1)
-        sock.sendto(b"IDENTIFY", (interface["broadcast"], 10000))
-        while True:
-            try:
-                msg, addr = sock.recvfrom(1500)
-                if msg.startswith(b"IDENTIFY"):
-                    continue
-                res = json.loads(msg)
-                print(f"Got response from {addr}: {res}")
-                for v in res["inputs"]:
-                    v["addr"] = addr[0]
-                    v["device"] = res["name"]
-                    v["local_addr"] = interface["addr"]
-                    s.eth_outputs["e" + str(identifier)] = v
-                    identifier += 1
-                for v in res["outputs"]:
-                    v["addr"] = addr[0]
-                    v["device"] = res["name"]
-                    v["local_addr"] = interface["addr"]
-                    s.eth_inputs["e" + str(identifier)] = v
-                    identifier += 1
-            except socket.timeout:
-                break
+        sock.sendto(b"IDENTIFY", (h.address, h.port))
+        try:
+            msg, addr = sock.recvfrom(1500)
+            if msg.startswith(b"IDENTIFY"):
+                continue
+            res = json.loads(msg)
+            print(f"Got response from {addr}: {res}")
+            for v in res["inputs"]:
+                v["addr"] = addr[0]
+                v["device"] = res["name"]
+                v["local_addr"] = h.local_address
+                s.eth_outputs["e" + str(identifier)] = v
+                identifier += 1
+            for v in res["outputs"]:
+                v["addr"] = addr[0]
+                v["device"] = res["name"]
+                v["local_addr"] = h.local_address
+                s.eth_inputs["e" + str(identifier)] = v
+                identifier += 1
+        except socket.timeout:
+            break
         sock.close()
     s.cmdloop()
 
