@@ -58,7 +58,9 @@ class Envgen:
         time.sleep(1)
         for interface in self.interfaces:
             threading.Thread(
-                target=ssdp.ssdp_client_thread, args=(interface["addr"], self.directive_port, self.uuid), daemon=True
+                target=ssdp.ssdp_client_thread,
+                args=(interface["addr"], self.directive_port, self.uuid),
+                daemon=True,
             ).start()
         threading.Thread(target=self.output_thread, daemon=True).start()
 

@@ -5,12 +5,13 @@ import time
 
 from dataclasses import dataclass
 
+
 @dataclass
 class HostModule:
-    uuid : str
-    address : str
-    port : int
-    local_address : str
+    uuid: str
+    address: str
+    port: int
+    local_address: str
 
 
 def find_modules() -> list[HostModule]:
@@ -56,7 +57,7 @@ def find_modules() -> list[HostModule]:
                 lines = msg.split(b"\r\n")
                 if b"200" not in lines[0]:
                     continue
-                val = HostModule("", "", 0, interface['addr'])
+                val = HostModule("", "", 0, interface["addr"])
                 for l in lines[1:]:
                     if l.startswith(b"LOCATION"):
                         url = l.split(b" ")[1]
@@ -79,6 +80,7 @@ def find_modules() -> list[HostModule]:
         else:
             del res[i]
     return res
+
 
 def ssdp_client_thread(local_address, directive_port, uuid):
     """Thread that responds to SSDP searches."""
@@ -139,6 +141,7 @@ def ssdp_client_thread(local_address, directive_port, uuid):
             resp_sock.sendto(bytes(search_res, "ASCII"), addr)
         except socket.timeout:
             continue
+
 
 if __name__ == "__main__":
     print(find_modules())
