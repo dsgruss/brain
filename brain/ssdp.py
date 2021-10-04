@@ -3,15 +3,7 @@ import socket
 import struct
 import time
 
-from dataclasses import dataclass
-
-
-@dataclass
-class HostModule:
-    uuid: str
-    address: str
-    port: int
-    local_address: str
+from hostmodule import HostModule
 
 
 def find_modules() -> list[HostModule]:
@@ -26,7 +18,7 @@ def find_modules() -> list[HostModule]:
     request += b"ST: upn:prompt-critical:control\r\n"
     request += b"\r\n"
 
-    res = []  # (uuid, ip address, port)
+    res = []
     interfaces = []
     print("Discovering network interfaces...")
     for interface in netifaces.interfaces():

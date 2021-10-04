@@ -1,7 +1,7 @@
 import cmd
 import numpy as np
 import readline
-import ssdp
+import sweep
 import sounddevice as sd
 import socket
 import threading
@@ -237,7 +237,7 @@ def main():
         exit(-1)
     s = Shell(api_index)
     print("Discovering devices...")
-    hosts = ssdp.find_modules()
+    hosts = sweep.find_modules()
     identifier = 0
     for h in hosts:
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
