@@ -47,5 +47,6 @@ def find_modules() -> list[HostModule]:
             del res[i]
     return res
 
+
 if __name__ == "__main__":
     print(find_modules())
