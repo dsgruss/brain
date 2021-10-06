@@ -21,8 +21,10 @@ class Shell(cmd.Cmd):
     eth_outputs = {}
     open_udp_sockets = []
     active_threads = []
+    hosts = []
 
-    def __init__(self, api_index):
+    def __init__(self, api_index, hosts):
+        self.hosts = hosts
         self.api_index = api_index
         self.audio_inputs = {
             str(i): d
@@ -134,9 +136,10 @@ class Shell(cmd.Cmd):
             samplerate = 48000
             q = queue.Queue(maxsize=buffersize)
 
-            def recv_thread():
+            def recv_thread(sema):
                 dev = self.eth_inputs[inp]
                 sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+                sock.settimeout(1)
                 sock.bind((dev["local_addr"], 12000))
 
                 control_sock = socket.socket(
@@ -153,12 +156,17 @@ class Shell(cmd.Cmd):
 
                 outbuffer = bytes()
 
-                while True:
-                    msg, addr = sock.recvfrom(12 + 8 * 48 * 2)
-                    outbuffer += msg[12:]
-                    if len(outbuffer) == blocksize * 2 * 8:
-                        q.put(outbuffer)
-                        outbuffer = bytes()
+                while sema.acquire(False):
+                    sema.release()
+                    try:
+                        msg, addr = sock.recvfrom(12 + 8 * 48 * 2)
+                        outbuffer += msg[12:]
+                        if len(outbuffer) == blocksize * 2 * 8:
+                            q.put(outbuffer)
+                            outbuffer = bytes()
+                    except socket.timeout:
+                        continue
+
 
             def audio_in_eth_callback(outdata, frames, time, status):
                 assert frames == blocksize
@@ -187,7 +195,9 @@ class Shell(cmd.Cmd):
 
             self.open_audio_devices.append(s)
 
-            threading.Thread(target=recv_thread, daemon=True).start()
+            t = threading.Semaphore()
+            threading.Thread(target=recv_thread, args=(t, ), daemon=True).start()
+            self.active_threads.append(t)
             while not q.full():
                 pass
             s.start()
@@ -214,6 +224,12 @@ class Shell(cmd.Cmd):
             s = self.open_audio_devices.pop()
             s.stop()
             s.close()
+        while self.active_threads:
+            t = self.active_threads.pop()
+            t.acquire()
+        for h in self.hosts:
+            sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+            sock.sendto(b"RESET            ", (h.address, h.port))
 
     def do_exit(self, arg):
         "Close all open audio devices and exit the shell."
@@ -235,9 +251,10 @@ def main():
     else:
         print("Acceptable hostapi not found.")
         exit(-1)
-    s = Shell(api_index)
+    
     print("Discovering devices...")
     hosts = sweep.find_modules()
+    s = Shell(api_index, hosts)
     identifier = 0
     for h in hosts:
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)

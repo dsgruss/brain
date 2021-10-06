@@ -1,4 +1,5 @@
 import json
+from operator import attrgetter
 import netifaces
 import socket
 
@@ -37,6 +38,7 @@ def find_modules() -> list[HostModule]:
         except socket.timeout:
             pass
 
+    res.sort(key=lambda x: x.address)
     i = 0
     seen = set()
     while i < len(res):

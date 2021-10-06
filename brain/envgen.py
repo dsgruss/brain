@@ -65,6 +65,7 @@ class Envgen:
         threading.Thread(target=self.output_thread, daemon=True).start()
 
     def midi_to_cv_callback(self, message: mido.Message):
+        print(message)
         self.timestamp += 1
         if message.type == "note_off":
             for v in self.voices:
@@ -90,6 +91,8 @@ class Envgen:
                 )[0]
                 voice_steal["note"] = message.note
                 voice_steal["timestamp"] = self.timestamp
+        for v in self.voices:
+            print("\t", v)
 
     def output_thread(self):
         # Send the data as CV over over all requested ports and addresses at the configured sample rate
@@ -208,6 +211,7 @@ class Envgen:
                 print("Identification command received.")
                 sock.sendto(bytes(json.dumps(env), "utf8"), addr)
             elif msg.startswith(b"REQUEST"):
+                print("Patch mapping command received.")
                 directive, destination_address, destination_port, id = unpack(
                     "!10s4shB", msg
                 )
@@ -227,6 +231,7 @@ class Envgen:
                 elif id == 6:
                     self.asredest.append(address)
             elif msg.startswith(b"RESET"):
+                print("Reset command received.")
                 self.notedest.clear()
                 self.gatedest.clear()
                 self.velodest.clear()
