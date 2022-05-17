@@ -56,11 +56,20 @@ class Envgen:
         self.cbgateval = tkinter.BooleanVar()
         self.cbasrval = tkinter.BooleanVar()
 
-        self.cbnote = ttk.Checkbutton(root, text="Note", variable=self.cbnoteval, command=self.check_handler)
+        self.cbnote = ttk.Checkbutton(
+            root, text="Note", variable=self.cbnoteval, command=self.check_handler
+        )
         self.cbnote.place(x=10, y=50)
-        self.cbgate = ttk.Checkbutton(root, text="Gate", variable=self.cbgateval, command=self.check_handler)
+        self.cbgate = ttk.Checkbutton(
+            root, text="Gate", variable=self.cbgateval, command=self.check_handler
+        )
         self.cbgate.place(x=10, y=90)
-        self.cbasr = ttk.Checkbutton(root, text="ASR Envelope", variable=self.cbasrval, command=self.check_handler)
+        self.cbasr = ttk.Checkbutton(
+            root,
+            text="ASR Envelope",
+            variable=self.cbasrval,
+            command=self.check_handler,
+        )
         self.cbasr.place(x=10, y=130)
 
         ttk.Label(root, text=self.name).place(x=10, y=10)
@@ -70,17 +79,17 @@ class Envgen:
 
     def check_handler(self):
         if self.cbnoteval.get():
-            self.cbgate['state'] = tkinter.DISABLED
-            self.cbasr['state'] = tkinter.DISABLED
+            self.cbgate["state"] = tkinter.DISABLED
+            self.cbasr["state"] = tkinter.DISABLED
         elif self.cbgateval.get():
             self.cbnote["state"] = tkinter.DISABLED
             self.cbasr["state"] = tkinter.DISABLED
         elif self.cbasrval.get():
             self.cbnote["state"] = tkinter.DISABLED
-            self.cbgate['state'] = tkinter.DISABLED
+            self.cbgate["state"] = tkinter.DISABLED
         else:
             self.cbnote["state"] = tkinter.NORMAL
-            self.cbgate['state'] = tkinter.NORMAL
+            self.cbgate["state"] = tkinter.NORMAL
             self.cbasr["state"] = tkinter.NORMAL
 
     def shutdown(self):
