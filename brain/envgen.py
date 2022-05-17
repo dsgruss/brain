@@ -2,8 +2,10 @@ import mido
 import numpy as np
 import threading
 import time
+import tkinter
 
 from operator import itemgetter
+from tkinter import ttk
 
 import module
 
@@ -15,6 +17,8 @@ class Envgen:
     atime = 0.05  # sec
     rtime = 0.25  # sec
     timestamp = 0
+    running = True
+    name = "Midi to CV converter"
 
     voices = [
         {"note": 0, "on": False, "timestamp": 0, "env": 0, "envupdate": time.time()}
@@ -22,76 +26,65 @@ class Envgen:
     ]
 
     def __init__(self):
+
+        self.module_interface = module.Module(self.name)
+        params = {
+            "channels": self.channels,
+            "samplerate": self.updatefreq,
+            "format": "L16",
+        }
+        self.notedest = self.module_interface.add_output(name="Note", **params)
+        self.gatedest = self.module_interface.add_output(name="Gate", **params)
+        self.velodest = self.module_interface.add_output(name="Velocity", **params)
+        self.liftdest = self.module_interface.add_output(name="Lift", **params)
+        self.piwhdest = self.module_interface.add_output(name="Pitch Wheel", **params)
+        self.mdwhdest = self.module_interface.add_output(name="Mod Wheel", **params)
+        self.asredest = self.module_interface.add_output(name="ASR Envelope", **params)
+
+        threading.Thread(target=self.output_thread, daemon=True).start()
+        threading.Thread(target=self.ui_thread, daemon=True).start()
+
         print("Opening all midi inputs by default...")
         for inp in mido.get_input_names():
             mido.open_input(inp, callback=self.midi_to_cv_callback)
 
-        self.module_interface = module.Module("Midi to CV converter")
-        self.notedest = self.module_interface.add_output(
-            {
-                "id": 0,
-                "name": "Note",
-                "channels": self.channels,
-                "samplerate": self.updatefreq,
-                "format": "L16",
-            }
-        )
-        self.gatedest = self.module_interface.add_output(
-            {
-                "id": 1,
-                "name": "Gate",
-                "channels": self.channels,
-                "samplerate": self.updatefreq,
-                "format": "L16",
-            }
-        )
-        self.velodest = self.module_interface.add_output(
-            {
-                "id": 2,
-                "name": "Velocity",
-                "channels": self.channels,
-                "samplerate": self.updatefreq,
-                "format": "L16",
-            }
-        )
-        self.liftdest = self.module_interface.add_output(
-            {
-                "id": 3,
-                "name": "Lift",
-                "channels": self.channels,
-                "samplerate": self.updatefreq,
-                "format": "L16",
-            }
-        )
-        self.piwhdest = self.module_interface.add_output(
-            {
-                "id": 4,
-                "name": "Pitch Wheel",
-                "channels": 1,
-                "samplerate": self.updatefreq,
-                "format": "L16",
-            }
-        )
-        self.mdwhdest = self.module_interface.add_output(
-            {
-                "id": 5,
-                "name": "Mod Wheel",
-                "channels": 1,
-                "samplerate": self.updatefreq,
-                "format": "L16",
-            }
-        )
-        self.asredest = self.module_interface.add_output(
-            {
-                "id": 6,
-                "name": "ASR Envelope",
-                "channels": self.channels,
-                "samplerate": self.updatefreq,
-                "format": "L16",
-            }
-        )
+    def ui_thread(self):
+        root = tkinter.Tk()
+        root.geometry("200x500")
 
-        threading.Thread(target=self.output_thread, daemon=True).start()
+        self.cbnoteval = tkinter.BooleanVar()
+        self.cbgateval = tkinter.BooleanVar()
+        self.cbasrval = tkinter.BooleanVar()
+
+        self.cbnote = ttk.Checkbutton(root, text="Note", variable=self.cbnoteval, command=self.check_handler)
+        self.cbnote.place(x=10, y=50)
+        self.cbgate = ttk.Checkbutton(root, text="Gate", variable=self.cbgateval, command=self.check_handler)
+        self.cbgate.place(x=10, y=90)
+        self.cbasr = ttk.Checkbutton(root, text="ASR Envelope", variable=self.cbasrval, command=self.check_handler)
+        self.cbasr.place(x=10, y=130)
+
+        ttk.Label(root, text=self.name).place(x=10, y=10)
+        ttk.Button(root, text="Quit", command=self.shutdown).place(x=10, y=170)
+
+        root.mainloop()
+
+    def check_handler(self):
+        if self.cbnoteval.get():
+            self.cbgate['state'] = tkinter.DISABLED
+            self.cbasr['state'] = tkinter.DISABLED
+        elif self.cbgateval.get():
+            self.cbnote["state"] = tkinter.DISABLED
+            self.cbasr["state"] = tkinter.DISABLED
+        elif self.cbasrval.get():
+            self.cbnote["state"] = tkinter.DISABLED
+            self.cbgate['state'] = tkinter.DISABLED
+        else:
+            self.cbnote["state"] = tkinter.NORMAL
+            self.cbgate['state'] = tkinter.NORMAL
+            self.cbasr["state"] = tkinter.NORMAL
+
+    def shutdown(self):
+        self.running = False
 
     def midi_to_cv_callback(self, message: mido.Message):
         print(message)
@@ -161,5 +154,5 @@ class Envgen:
 
 if __name__ == "__main__":
     e = Envgen()
-    while True:
+    while e.running:
         time.sleep(1)

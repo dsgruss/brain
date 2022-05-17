@@ -29,8 +29,8 @@ class InputJack:
 
 
 class OutputJack:
-    def __init__(self, params):
-        self.params = params
+    def __init__(self, **kwargs):
+        self.params = kwargs
         self.destinations = []
 
     def send(self, data: bytes):
@@ -68,6 +68,7 @@ class Module:
         self._uuid = uuid.uuid4()
 
         print("Discovering network interfaces...")
+
         for interface in netifaces.interfaces():
             interfaces_details = netifaces.ifaddresses(interface)
             if netifaces.AF_INET in interfaces_details:
@@ -77,13 +78,8 @@ class Module:
             threading.Thread(
                 target=self._loop, args=(interface["addr"],), daemon=True
             ).start()
+
         time.sleep(1)
-        for interface in self._network_interfaces:
-            threading.Thread(
-                target=ssdp.ssdp_client_thread,
-                args=(interface["addr"], self.directive_port, self._uuid),
-                daemon=True,
-            ).start()
 
     def _loop(self, local_address):
         # Thread that responds to identification and control commands
@@ -132,9 +128,9 @@ class Module:
         self.inputs.append(jack)
         return jack
 
-    def add_output(self, jack_info) -> OutputJack:
+    def add_output(self, **kwargs) -> OutputJack:
         # Adds a new output to the module
-        jack = OutputJack(jack_info)
+        jack = OutputJack(id=len(self.outputs), **kwargs)
         jack._owning_module = self
         self.outputs.append(jack)
         return jack
