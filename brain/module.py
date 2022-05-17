@@ -1,12 +1,13 @@
 import netifaces
+import json
+import socket
 import threading
 import time
-import ssdp
-import socket
 import uuid
-import json
 
 from struct import unpack
+
+import ssdp
 
 
 class InputJack:
@@ -23,7 +24,7 @@ class InputJack:
         return False
 
     def clear(self):
-        # Unpatch this jack from all other modules
+        # Disconnect this jack from all other modules
         pass
 
 
@@ -46,7 +47,7 @@ class OutputJack:
         return False
 
     def clear(self):
-        # Unpatch this jack from all other modules
+        # Disconnect this jack from all other modules
         pass
 
 

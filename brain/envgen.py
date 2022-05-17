@@ -1,11 +1,9 @@
 import mido
-
 import numpy as np
 import threading
 import time
 
 from operator import itemgetter
-
 
 import module
 
