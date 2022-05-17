@@ -29,58 +29,71 @@ class Envgen:
             mido.open_input(inp, callback=self.midi_to_cv_callback)
 
         self.module_interface = module.Module("Midi to CV converter")
-        self.notedest = self.module_interface.add_output({
-                    "id": 0,
-                    "name": "Note",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                })
-        self.gatedest = self.module_interface.add_output({
-                    "id": 1,
-                    "name": "Gate",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                })
-        self.velodest = self.module_interface.add_output({
-                    "id": 2,
-                    "name": "Velocity",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                })
-        self.liftdest = self.module_interface.add_output({
-                    "id": 3,
-                    "name": "Lift",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                })
-        self.piwhdest = self.module_interface.add_output({
-                    "id": 4,
-                    "name": "Pitch Wheel",
-                    "channels": 1,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                })
-        self.mdwhdest = self.module_interface.add_output({
-                    "id": 5,
-                    "name": "Mod Wheel",
-                    "channels": 1,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                })
-        self.asredest = self.module_interface.add_output({
-                    "id": 6,
-                    "name": "ASR Envelope",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                })
+        self.notedest = self.module_interface.add_output(
+            {
+                "id": 0,
+                "name": "Note",
+                "channels": self.channels,
+                "samplerate": self.updatefreq,
+                "format": "L16",
+            }
+        )
+        self.gatedest = self.module_interface.add_output(
+            {
+                "id": 1,
+                "name": "Gate",
+                "channels": self.channels,
+                "samplerate": self.updatefreq,
+                "format": "L16",
+            }
+        )
+        self.velodest = self.module_interface.add_output(
+            {
+                "id": 2,
+                "name": "Velocity",
+                "channels": self.channels,
+                "samplerate": self.updatefreq,
+                "format": "L16",
+            }
+        )
+        self.liftdest = self.module_interface.add_output(
+            {
+                "id": 3,
+                "name": "Lift",
+                "channels": self.channels,
+                "samplerate": self.updatefreq,
+                "format": "L16",
+            }
+        )
+        self.piwhdest = self.module_interface.add_output(
+            {
+                "id": 4,
+                "name": "Pitch Wheel",
+                "channels": 1,
+                "samplerate": self.updatefreq,
+                "format": "L16",
+            }
+        )
+        self.mdwhdest = self.module_interface.add_output(
+            {
+                "id": 5,
+                "name": "Mod Wheel",
+                "channels": 1,
+                "samplerate": self.updatefreq,
+                "format": "L16",
+            }
+        )
+        self.asredest = self.module_interface.add_output(
+            {
+                "id": 6,
+                "name": "ASR Envelope",
+                "channels": self.channels,
+                "samplerate": self.updatefreq,
+                "format": "L16",
+            }
+        )
 
         threading.Thread(target=self.output_thread, daemon=True).start()
-
 
     def midi_to_cv_callback(self, message: mido.Message):
         print(message)
@@ -117,7 +130,7 @@ class Envgen:
 
         while True:
             currtime = time.time()
-            
+
             voct_data = np.zeros((1, 8), dtype=np.int16)
             gate_data = np.zeros((1, 8), dtype=np.int16)
             level_data = np.zeros((1, 8), dtype=np.int16)
@@ -146,7 +159,6 @@ class Envgen:
                 continue
             else:
                 time.sleep((1 / self.updatefreq) - dtime)
-
 
 
 if __name__ == "__main__":

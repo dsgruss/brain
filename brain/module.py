@@ -8,6 +8,7 @@ import json
 
 from struct import unpack
 
+
 class InputJack:
     def __init__(self, data_callback, params):
         self.callback = data_callback
@@ -24,6 +25,7 @@ class InputJack:
     def clear(self):
         # Unpatch this jack from all other modules
         pass
+
 
 class OutputJack:
     def __init__(self, params):
@@ -47,14 +49,15 @@ class OutputJack:
         # Unpatch this jack from all other modules
         pass
 
+
 class Module:
     # Class to handle networking and discovery layers for each module
     inputs = []
     outputs = []
-    
+
     _network_interfaces = []
     _sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-    
+
     directive_port = 10000
 
     def __init__(self, name, patching_callback=None):
@@ -62,7 +65,7 @@ class Module:
         self.name = name
         self.patching_callback = patching_callback
         self._uuid = uuid.uuid4()
-        
+
         print("Discovering network interfaces...")
         for interface in netifaces.interfaces():
             interfaces_details = netifaces.ifaddresses(interface)
@@ -97,12 +100,7 @@ class Module:
             print("Unable to find open port.")
             exit(-1)
 
-        env = {
-            "name": self.name,
-            "id": self._uuid,
-            "inputs": [],
-            "outputs": []
-        }
+        env = {"name": self.name, "id": self._uuid, "inputs": [], "outputs": []}
 
         print(f"Listening for directives on {local_address}:{self.directive_port}...")
 
