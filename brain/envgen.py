@@ -1,14 +1,13 @@
-import json
 import mido
-import netifaces
+
 import numpy as np
-import socket
-import ssdp
 import threading
 import time
 
 from operator import itemgetter
-from struct import unpack
+
+
+import module
 
 
 class Envgen:
@@ -18,51 +17,70 @@ class Envgen:
     atime = 0.05  # sec
     rtime = 0.25  # sec
     timestamp = 0
-    sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-
-    directive_port = 10000
-    uuid = "078e6915-945f-4071-8578-4cd459056099"
 
     voices = [
         {"note": 0, "on": False, "timestamp": 0, "env": 0, "envupdate": time.time()}
         for _ in range(channels)
     ]
 
-    # List of destination address:ports configured for each output
-
-    notedest = []
-    gatedest = []
-    velodest = []
-    liftdest = []
-    piwhdest = []
-    mdwhdest = []
-    asredest = []
-
-    interfaces = []
-
     def __init__(self):
         print("Opening all midi inputs by default...")
         for inp in mido.get_input_names():
             mido.open_input(inp, callback=self.midi_to_cv_callback)
 
-        print("Discovering network interfaces...")
-        for interface in netifaces.interfaces():
-            interfaces_details = netifaces.ifaddresses(interface)
-            if netifaces.AF_INET in interfaces_details:
-                self.interfaces.extend(interfaces_details[netifaces.AF_INET])
+        self.module_interface = module.Module("Midi to CV converter")
+        self.notedest = self.module_interface.add_output({
+                    "id": 0,
+                    "name": "Note",
+                    "channels": self.channels,
+                    "samplerate": self.updatefreq,
+                    "format": "L16",
+                })
+        self.gatedest = self.module_interface.add_output({
+                    "id": 1,
+                    "name": "Gate",
+                    "channels": self.channels,
+                    "samplerate": self.updatefreq,
+                    "format": "L16",
+                })
+        self.velodest = self.module_interface.add_output({
+                    "id": 2,
+                    "name": "Velocity",
+                    "channels": self.channels,
+                    "samplerate": self.updatefreq,
+                    "format": "L16",
+                })
+        self.liftdest = self.module_interface.add_output({
+                    "id": 3,
+                    "name": "Lift",
+                    "channels": self.channels,
+                    "samplerate": self.updatefreq,
+                    "format": "L16",
+                })
+        self.piwhdest = self.module_interface.add_output({
+                    "id": 4,
+                    "name": "Pitch Wheel",
+                    "channels": 1,
+                    "samplerate": self.updatefreq,
+                    "format": "L16",
+                })
+        self.mdwhdest = self.module_interface.add_output({
+                    "id": 5,
+                    "name": "Mod Wheel",
+                    "channels": 1,
+                    "samplerate": self.updatefreq,
+                    "format": "L16",
+                })
+        self.asredest = self.module_interface.add_output({
+                    "id": 6,
+                    "name": "ASR Envelope",
+                    "channels": self.channels,
+                    "samplerate": self.updatefreq,
+                    "format": "L16",
+                })
 
-        for interface in self.interfaces:
-            threading.Thread(
-                target=self.control_thread, args=(interface["addr"],), daemon=True
-            ).start()
-        time.sleep(1)
-        for interface in self.interfaces:
-            threading.Thread(
-                target=ssdp.ssdp_client_thread,
-                args=(interface["addr"], self.directive_port, self.uuid),
-                daemon=True,
-            ).start()
         threading.Thread(target=self.output_thread, daemon=True).start()
+
 
     def midi_to_cv_callback(self, message: mido.Message):
         print(message)
@@ -99,7 +117,7 @@ class Envgen:
 
         while True:
             currtime = time.time()
-            rtp_header = bytes("############", "ASCII")
+            
             voct_data = np.zeros((1, 8), dtype=np.int16)
             gate_data = np.zeros((1, 8), dtype=np.int16)
             level_data = np.zeros((1, 8), dtype=np.int16)
@@ -118,127 +136,17 @@ class Envgen:
                     )
                 level_data[0, i] = v["env"]
                 v["envupdate"] = currtime
-            for loc in self.notedest:
-                self.sock.sendto(rtp_header + voct_data.tobytes(), loc)
-            for loc in self.gatedest:
-                self.sock.sendto(rtp_header + gate_data.tobytes(), loc)
-            for loc in self.asredest:
-                self.sock.sendto(rtp_header + level_data.tobytes(), loc)
+
+            self.notedest.send(voct_data.tobytes())
+            self.gatedest.send(gate_data.tobytes())
+            self.asredest.send(level_data.tobytes())
+
             dtime = time.time() - currtime
             if dtime > (1 / self.updatefreq):
                 continue
             else:
                 time.sleep((1 / self.updatefreq) - dtime)
 
-    def control_thread(self, local_address):
-        # Thread that responds to identification and control commands
-
-        sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-
-        for _ in range(10):
-            try:
-                sock.bind((local_address, self.directive_port))
-                break
-            except OSError:
-                self.directive_port += 1
-                continue
-        else:
-            print("Unable to find open port.")
-            exit(-1)
-
-        env = {
-            "name": "Midi to CV converter",
-            "id": self.uuid,
-            "inputs": [],
-            "outputs": [
-                {
-                    "id": 0,
-                    "name": "Note",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                },
-                {
-                    "id": 1,
-                    "name": "Gate",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                },
-                {
-                    "id": 2,
-                    "name": "Velocity",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                },
-                {
-                    "id": 3,
-                    "name": "Lift",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                },
-                {
-                    "id": 4,
-                    "name": "Pitch Wheel",
-                    "channels": 1,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                },
-                {
-                    "id": 5,
-                    "name": "Mod Wheel",
-                    "channels": 1,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                },
-                {
-                    "id": 6,
-                    "name": "ASR Envelope",
-                    "channels": self.channels,
-                    "samplerate": self.updatefreq,
-                    "format": "L16",
-                },
-            ],
-        }
-
-        print(f"Listening for directives on {local_address}:{self.directive_port}...")
-
-        while True:
-            msg, addr = sock.recvfrom(1500)
-            if msg.startswith(b"IDENTIFY"):
-                print("Identification command received.")
-                sock.sendto(bytes(json.dumps(env), "utf8"), addr)
-            elif msg.startswith(b"REQUEST"):
-                print("Patch mapping command received.")
-                directive, destination_address, destination_port, id = unpack(
-                    "!10s4shB", msg
-                )
-                address = (socket.inet_ntoa(destination_address), destination_port)
-                if id == 0:
-                    self.notedest.append(address)
-                elif id == 1:
-                    self.gatedest.append(address)
-                elif id == 2:
-                    self.velodest.append(address)
-                elif id == 3:
-                    self.liftdest.append(address)
-                elif id == 4:
-                    self.piwhdest.append(address)
-                elif id == 5:
-                    self.mdwhdest.append(address)
-                elif id == 6:
-                    self.asredest.append(address)
-            elif msg.startswith(b"RESET"):
-                print("Reset command received.")
-                self.notedest.clear()
-                self.gatedest.clear()
-                self.velodest.clear()
-                self.liftdest.clear()
-                self.piwhdest.clear()
-                self.mdwhdest.clear()
-                self.asredest.clear()
 
 
 if __name__ == "__main__":
