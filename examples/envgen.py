@@ -7,11 +7,11 @@ import tkinter
 from operator import itemgetter
 from tkinter import ttk
 
-import module
+from brain import module
 
 
 class Envgen:
-    # Promote midi stream to audio rate CV, streaming over ethernet
+    # Promote midi stream to control voltages
     channels = 8
     updatefreq = 1000  # Hz
     atime = 0.05  # sec
@@ -44,9 +44,9 @@ class Envgen:
         threading.Thread(target=self.output_thread, daemon=True).start()
         threading.Thread(target=self.ui_thread, daemon=True).start()
 
-        print("Opening all midi inputs by default...")
-        for inp in mido.get_input_names():
-            mido.open_input(inp, callback=self.midi_to_cv_callback)
+        # print("Opening all midi inputs by default...")
+        # for inp in mido.get_input_names():
+        #     mido.open_input(inp, callback=self.midi_to_cv_callback)
 
     def ui_thread(self):
         root = tkinter.Tk()
@@ -57,18 +57,18 @@ class Envgen:
         self.cbasrval = tkinter.BooleanVar()
 
         self.cbnote = ttk.Checkbutton(
-            root, text="Note", variable=self.cbnoteval, command=self.check_handler
+            root, text="Note", variable=self.cbnoteval, command=self.note_check_handler
         )
         self.cbnote.place(x=10, y=50)
         self.cbgate = ttk.Checkbutton(
-            root, text="Gate", variable=self.cbgateval, command=self.check_handler
+            root, text="Gate", variable=self.cbgateval, command=self.gate_check_handler
         )
         self.cbgate.place(x=10, y=90)
         self.cbasr = ttk.Checkbutton(
             root,
             text="ASR Envelope",
             variable=self.cbasrval,
-            command=self.check_handler,
+            command=self.asr_check_handler,
         )
         self.cbasr.place(x=10, y=130)
 
@@ -76,6 +76,16 @@ class Envgen:
         ttk.Button(root, text="Quit", command=self.shutdown).place(x=10, y=170)
 
         root.mainloop()
+        self.shutdown()
+
+    def note_check_handler(self):
+        self.notedest.patch_enabled(self.cbnoteval.get())
+
+    def gate_check_handler(self):
+        self.gatedest.patch_enabled(self.cbgateval.get())
+
+    def asr_check_handler(self):
+        self.asredest.patch_enabled(self.cbasrval.get())
 
     def check_handler(self):
         if self.cbnoteval.get():
