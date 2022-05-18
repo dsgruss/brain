@@ -5,19 +5,23 @@ import threading
 import time
 import uuid
 
+from itertools import chain
 from struct import unpack
 
-import ssdp
-
+from brain import consensus
 
 class InputJack:
     def __init__(self, data_callback, params):
         self.callback = data_callback
         self.params = params
+        self.state = False
 
     def patch_enabled(self, state: bool):
         # Indicate the jack is available for patching and notify other modules
-        pass
+        if self.state != state:
+            self.state = state
+            self._owning_module.update_patch()
+
 
     def is_patched(self) -> bool:
         # Returns True if another module is sending data to the jack
@@ -32,6 +36,7 @@ class OutputJack:
     def __init__(self, **kwargs):
         self.params = kwargs
         self.destinations = []
+        self.state = False
 
     def send(self, data: bytes):
         rtp_header = bytes("############", "ASCII")
@@ -40,7 +45,9 @@ class OutputJack:
 
     def patch_enabled(self, state: bool):
         # Indicate the jack is available for patching and notify other modules
-        pass
+        if self.state != state:
+            self.state = state
+            self._owning_module.update_patch()
 
     def is_patched(self) -> bool:
         # Returns True if another module is consuming the data from this jack
@@ -59,7 +66,7 @@ class Module:
     _network_interfaces = []
     _sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-    directive_port = 10000
+    directive_port = 12345
 
     def __init__(self, name, patching_callback=None):
         # Initializes the module and allows for discovery by management requests
@@ -74,17 +81,20 @@ class Module:
             if netifaces.AF_INET in interfaces_details:
                 self._network_interfaces.extend(interfaces_details[netifaces.AF_INET])
 
+        print(self._network_interfaces)
         for interface in self._network_interfaces:
             threading.Thread(
                 target=self._loop, args=(interface["addr"],), daemon=True
             ).start()
 
-        time.sleep(1)
+        self._consensus = consensus.Consensus(None, self._uuid)
+
 
     def _loop(self, local_address):
         # Thread that responds to identification and control commands
 
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
 
         for _ in range(10):
             try:
@@ -135,6 +145,6 @@ class Module:
         self.outputs.append(jack)
         return jack
 
-    def accept_patch(self, id):
-        # Accept an offered patch from patching_callback
-        pass
+    def update_patch(self):
+        # Trigger in update in the shared state
+        self._consensus.update([j.state for j in chain(self.inputs, self.outputs) if j.state])
