@@ -48,9 +48,7 @@ class Consensus:
 
         for interface in netifaces.interfaces():
             interfaces_details = netifaces.ifaddresses(interface)
-            if (
-                netifaces.AF_INET in interfaces_details
-            ):
+            if netifaces.AF_INET in interfaces_details:
                 self._network_interfaces.extend(interfaces_details[netifaces.AF_INET])
 
         print(self._network_interfaces)
