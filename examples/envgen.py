@@ -1,6 +1,6 @@
+import asyncio
 import mido
 import numpy as np
-import threading
 import time
 import tkinter
 
@@ -25,7 +25,8 @@ class Envgen:
         for _ in range(channels)
     ]
 
-    def __init__(self):
+    def __init__(self, loop):
+        self.loop = loop
 
         self.module_interface = module.Module(self.name)
         params = {
@@ -41,14 +42,14 @@ class Envgen:
         self.mdwhdest = self.module_interface.add_output(name="Mod Wheel", **params)
         self.asredest = self.module_interface.add_output(name="ASR Envelope", **params)
 
-        threading.Thread(target=self.output_thread, daemon=True).start()
-        threading.Thread(target=self.ui_thread, daemon=True).start()
+        loop.create_task(self.output_task())
+        loop.create_task(self.ui_task())
 
-        # print("Opening all midi inputs by default...")
-        # for inp in mido.get_input_names():
-        #     mido.open_input(inp, callback=self.midi_to_cv_callback)
+        print("Opening all midi inputs by default...")
+        for inp in mido.get_input_names():
+            loop.create_task(self.midi_task(mido.open_input(inp)))
 
-    def ui_thread(self):
+    async def ui_task(self, interval=1 / 60):
         root = tkinter.Tk()
         root.geometry("200x500")
 
@@ -75,8 +76,9 @@ class Envgen:
         ttk.Label(root, text=self.name).place(x=10, y=10)
         ttk.Button(root, text="Quit", command=self.shutdown).place(x=10, y=170)
 
-        root.mainloop()
-        self.shutdown()
+        while True:
+            root.update()
+            await asyncio.sleep(interval)
 
     def note_check_handler(self):
         self.notedest.patch_enabled(self.cbnoteval.get())
@@ -103,40 +105,44 @@ class Envgen:
             self.cbasr["state"] = tkinter.NORMAL
 
     def shutdown(self):
-        self.running = False
+        self.loop.stop()
 
-    def midi_to_cv_callback(self, message: mido.Message):
-        print(message)
-        self.timestamp += 1
-        if message.type == "note_off":
-            for v in self.voices:
-                if v["note"] == message.note and v["on"]:
-                    v["on"] = False
-                    v["timestamp"] = self.timestamp
-        elif message.type == "note_on":
-            # First see if we can take the oldest voice that has been released
-            voices_off = sorted(
-                (v for v in self.voices if v["on"] == False),
-                key=itemgetter("timestamp"),
-            )
-            if len(voices_off) > 0:
-                voices_off[0]["note"] = message.note
-                voices_off[0]["on"] = True
-                voices_off[0]["timestamp"] = self.timestamp
-            else:
-                # Otherwise, steal a voice. In this case, take the oldest note played. We
-                # also have a choice of whether to just change the pitch (done here), or to
-                # shut the note off and retrigger.
-                voice_steal = sorted(
-                    (v for v in self.voices), key=itemgetter("timestamp")
-                )[0]
-                voice_steal["note"] = message.note
-                voice_steal["timestamp"] = self.timestamp
-        for v in self.voices:
-            print("\t", v)
+    async def midi_task(self, port, interval=1 / 60):
+        while True:
+            for message in port.iter_pending():
+                print(message)
+                self.timestamp += 1
+                if message.type == "note_off":
+                    for v in self.voices:
+                        if v["note"] == message.note and v["on"]:
+                            v["on"] = False
+                            v["timestamp"] = self.timestamp
+                elif message.type == "note_on":
+                    # First see if we can take the oldest voice that has been released
+                    voices_off = sorted(
+                        (v for v in self.voices if v["on"] == False),
+                        key=itemgetter("timestamp"),
+                    )
+                    if len(voices_off) > 0:
+                        voices_off[0]["note"] = message.note
+                        voices_off[0]["on"] = True
+                        voices_off[0]["timestamp"] = self.timestamp
+                    else:
+                        # Otherwise, steal a voice. In this case, take the oldest note played. We
+                        # also have a choice of whether to just change the pitch (done here), or to
+                        # shut the note off and retrigger.
+                        voice_steal = sorted(
+                            (v for v in self.voices), key=itemgetter("timestamp")
+                        )[0]
+                        voice_steal["note"] = message.note
+                        voice_steal["timestamp"] = self.timestamp
+                for v in self.voices:
+                    print("\t", v)
+            await asyncio.sleep(interval)
 
-    def output_thread(self):
-        # Send the data as CV over over all requested ports and addresses at the configured sample rate
+    async def output_task(self):
+        """Send the data as CV over over all requested ports and addresses at the configured sample
+        rate"""
 
         while True:
             currtime = time.time()
@@ -168,10 +174,11 @@ class Envgen:
             if dtime > (1 / self.updatefreq):
                 continue
             else:
-                time.sleep((1 / self.updatefreq) - dtime)
+                await asyncio.sleep((1 / self.updatefreq) - dtime)
 
 
 if __name__ == "__main__":
-    e = Envgen()
-    while e.running:
-        time.sleep(1)
+    loop = asyncio.get_event_loop()
+    app = Envgen(loop)
+    loop.run_forever()
+    loop.close()
