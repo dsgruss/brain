@@ -6,7 +6,6 @@ import socket
 import uuid
 
 from enum import Enum
-from itertools import chain
 
 
 class Jack:
@@ -60,6 +59,8 @@ class Module:
         self.patching_callback = patching_callback
         self.uuid = str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
+        if patching_callback is not None:
+            patching_callback(self.patch_state)
 
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
@@ -89,13 +90,15 @@ class Module:
 
     def update_patch(self):
         # Trigger in update in the shared state
-        self.protocol.update(
-            [j.state for j in chain(self.inputs, self.outputs) if j.state]
-        )
+        s = [{"id": j.params["id"], "type": "input"} for j in self.inputs if j.state]
+        s += [{"id": j.params["id"], "type": "output"} for j in self.outputs if j.state]
+        self.protocol.update(s)
 
     def update_patch_state(self, patch_state):
         if self.patch_state != patch_state:
             self.patch_state = patch_state
+            if self.patching_callback is not None:
+                self.patching_callback(patch_state)
             logging.info(patch_state)
 
 
@@ -148,9 +151,24 @@ class PatchProtocol(asyncio.DatagramProtocol):
         self.push_update()
 
     def push_update(self):
-        self.state_callback(
-            PatchState(min(3, sum(len(v) for k, v in self.states.items())))
-        )
+        all_states = []
+        for uuid, state_list in self.states.items():
+            for state in state_list:
+                a = state.copy()
+                a["uuid"] = uuid
+                all_states.append(a)
+        logging.info(all_states)
+        if len(all_states) >= 3:
+            self.state_callback(PatchState.BLOCKED)
+        elif len(all_states) == 2:
+            if all_states[0]["type"] == all_states[1]["type"]:
+                self.state_callback(PatchState.BLOCKED)
+            else:
+                self.state_callback(PatchState.PATCH_TOGGLED)
+        elif len(all_states) == 1:
+            self.state_callback(PatchState.PATCH_ENABLED)
+        else:
+            self.state_callback(PatchState.IDLE)
 
     def datagram_received(self, data: bytes, addr) -> None:
         try:
