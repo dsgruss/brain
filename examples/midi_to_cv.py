@@ -13,20 +13,16 @@ import logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
-class Envgen:
+class MidiToCV:
     # Promote midi stream to control voltages
     channels = 8
     updatefreq = 1000  # Hz
-    atime = 0.05  # sec
-    rtime = 0.25  # sec
     timestamp = 0
-    running = True
     name = "Midi to CV converter"
+    grid_size = (4, 10)
+    grid_pos = (0, 0)
 
-    voices = [
-        {"note": 0, "on": False, "timestamp": 0, "env": 0, "envupdate": time.time()}
-        for _ in range(channels)
-    ]
+    voices = [{"note": 0, "on": False, "timestamp": 0} for _ in range(channels)]
 
     def __init__(self, loop):
         self.loop = loop
@@ -50,13 +46,16 @@ class Envgen:
         self.liftdest = self.module_interface.add_output(name="Lift", **params)
         self.piwhdest = self.module_interface.add_output(name="Pitch Wheel", **params)
         self.mdwhdest = self.module_interface.add_output(name="Mod Wheel", **params)
-        self.asredest = self.module_interface.add_output(name="ASR Envelope", **params)
 
         loop.create_task(self.output_task())
 
     def ui_setup(self):
         self.root = tk.Tk()
-        self.root.geometry("200x500+50+50")
+        w = self.grid_size[0] * 50
+        h = self.grid_size[1] * 50
+        x = self.grid_pos[0] * 50 + 50
+        y = self.grid_pos[1] * 50 + 50
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
 
@@ -78,13 +77,6 @@ class Envgen:
             command=self.gate_check_handler,
         )
         self.cbgate.place(x=10, y=90)
-        self.cbasr = tk.Checkbutton(
-            self.root,
-            text="ASR Envelope",
-            variable=self.cbasrval,
-            command=self.asr_check_handler,
-        )
-        self.cbasr.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -108,24 +100,6 @@ class Envgen:
 
     def gate_check_handler(self):
         self.gatedest.patch_enabled(self.cbgateval.get())
-
-    def asr_check_handler(self):
-        self.asredest.patch_enabled(self.cbasrval.get())
-
-    def check_handler(self):
-        if self.cbnoteval.get():
-            self.cbgate["state"] = tk.DISABLED
-            self.cbasr["state"] = tk.DISABLED
-        elif self.cbgateval.get():
-            self.cbnote["state"] = tk.DISABLED
-            self.cbasr["state"] = tk.DISABLED
-        elif self.cbasrval.get():
-            self.cbnote["state"] = tk.DISABLED
-            self.cbgate["state"] = tk.DISABLED
-        else:
-            self.cbnote["state"] = tk.NORMAL
-            self.cbgate["state"] = tk.NORMAL
-            self.cbasr["state"] = tk.NORMAL
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -177,26 +151,12 @@ class Envgen:
 
             voct_data = np.zeros((1, 8), dtype=np.int16)
             gate_data = np.zeros((1, 8), dtype=np.int16)
-            level_data = np.zeros((1, 8), dtype=np.int16)
             for i, v in enumerate(self.voices):
                 voct_data[0, i] = v["note"] * 256
                 gate_data[0, i] = 16000 if v["on"] else 0
-                if gate_data[0, i] > v["env"]:
-                    v["env"] = min(
-                        gate_data[0, i],
-                        v["env"] + (currtime - v["envupdate"]) / self.atime * 16000,
-                    )
-                else:
-                    v["env"] = max(
-                        gate_data[0, i],
-                        v["env"] - (currtime - v["envupdate"]) / self.rtime * 16000,
-                    )
-                level_data[0, i] = v["env"]
-                v["envupdate"] = currtime
 
             self.notedest.send(voct_data.tobytes())
             self.gatedest.send(gate_data.tobytes())
-            self.asredest.send(level_data.tobytes())
 
             dtime = time.time() - currtime
             if dtime > (1 / self.updatefreq):
@@ -207,6 +167,6 @@ class Envgen:
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    app = Envgen(loop)
+    app = MidiToCV(loop)
     loop.run_forever()
     loop.close()

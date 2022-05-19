@@ -21,6 +21,9 @@ class Oscilloscope:
     name = "Oscilloscope"
     channels = 8
     time_div = 4.0  # sec
+    grid_size = (8, 10)
+    grid_pos = (8, 0)
+
 
     def __init__(self, loop):
         self.dataseries = [[] for _ in range(self.channels)]
@@ -49,7 +52,11 @@ class Oscilloscope:
 
     def ui_setup(self):
         self.root = tk.Tk()
-        self.root.geometry("400x500+260+50")
+        w = self.grid_size[0] * 50
+        h = self.grid_size[1] * 50
+        x = self.grid_pos[0] * 50 + 50
+        y = self.grid_pos[1] * 50 + 50
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
 
