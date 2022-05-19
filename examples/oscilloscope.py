@@ -31,7 +31,7 @@ class Oscilloscope:
     def data_callback(self, data):
         pass
 
-    async def ui_task(self, interval=1 / 30):
+    async def ui_task(self, interval=(1 / 30)):
         root = tkinter.Tk()
         root.geometry("400x500+260+50")
 
