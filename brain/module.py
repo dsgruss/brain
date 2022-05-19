@@ -52,6 +52,7 @@ class Module:
     inputs = []
     outputs = []
     patch_port = 19874
+    preferred_broadcast = "10.255.255.255"
 
     def __init__(self, name, patching_callback=None):
         # Initializes the module and allows for discovery by management requests
@@ -62,12 +63,34 @@ class Module:
         if patching_callback is not None:
             patching_callback(self.patch_state)
 
+        addresses = []
+        for interface in netifaces.interfaces():
+            interfaces_details = netifaces.ifaddresses(interface)
+            if netifaces.AF_INET in interfaces_details:
+                for detail in interfaces_details[netifaces.AF_INET]:
+                    addresses.append(detail)
+
+        logging.info("Addresses found: " + str(addresses))
+        if len(addresses) == 0:
+            return
+
+        used_address = addresses[0]
+        for detail in addresses:
+            if detail["broadcast"] == self.preferred_broadcast:
+                used_address = detail
+
+        # The socket is created manually here because the handler doesn't appear to appear to allow
+        # an address reuse, even though we are using a broadcast
+
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
-        self.sock.bind(("", self.patch_port))
+        self.sock.bind((used_address["addr"], self.patch_port))
 
         self.protocol = PatchProtocol(
-            self.uuid, self.patch_port, self.update_patch_state
+            self.uuid,
+            used_address["broadcast"],
+            self.patch_port,
+            self.update_patch_state,
         )
         loop = asyncio.get_event_loop()
         loop.run_until_complete(
@@ -113,21 +136,14 @@ class PatchState(Enum):
 class PatchProtocol(asyncio.DatagramProtocol):
 
     states = {}
-    broadcast_addrs = []
 
-    def __init__(self, uuid, port, state_callback) -> None:
+    def __init__(self, uuid, broadcast_addr, port, state_callback) -> None:
         self.uuid = uuid
+        self.broadcast_addr = broadcast_addr
         self.port = port
         self.state_callback = state_callback
 
         self.states[uuid] = []
-
-        for interface in netifaces.interfaces():
-            interfaces_details = netifaces.ifaddresses(interface)
-            if netifaces.AF_INET in interfaces_details:
-                for detail in interfaces_details[netifaces.AF_INET]:
-                    if detail["addr"] != "127.0.0.1":
-                        self.broadcast_addrs.append((detail["broadcast"], port))
 
         super().__init__()
 
@@ -136,11 +152,11 @@ class PatchProtocol(asyncio.DatagramProtocol):
         self.transport = transport
 
     def datagram_send(self, json_msg):
-        logging.info("=> " + str(json_msg))
+        logging.info(
+            "=> " + str((self.broadcast_addr, self.port)) + ": " + str(json_msg)
+        )
         payload = bytes(json.dumps(json_msg), "utf8")
-        for addr in self.broadcast_addrs:
-            self.transport.sendto(payload, addr)
-            logging.info(addr)
+        self.transport.sendto(payload, (self.broadcast_addr, self.port))
 
     def update(self, local_state):
         # Updates the local state and triggers a global check-in
