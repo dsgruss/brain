@@ -37,7 +37,8 @@ class Oscilloscope:
         self.module_interface = module.Module(self.name, self.patching_callback)
         self.data = self.module_interface.add_input(self.data_callback, name="Data")
 
-        # loop.create_task(self.data_run())
+        # loop.create_task(self.random_square_wave())
+        # loop.create_task(self.sin_wave())
 
     def data_callback(self, data):
         result = np.frombuffer(data, dtype=np.int16)
@@ -120,17 +121,29 @@ class Oscilloscope:
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
 
-    async def data_run(self):
+    async def random_square_wave(self):
         while True:
             t = time.time()
-            self.dataseries.append(
-                (0.75 if round(t) % 2 == 0 else 0.25) + random.random() / 10
+            self.dataseries[0].append(
+                (16000 if round(t) % 2 == 0 else 0) + random.random() * 1000
             )
-            self.timeseries.append(t)
-            while len(self.timeseries) > 0 and self.timeseries[0] < t - 4:
-                self.timeseries.pop(0)
-                self.dataseries.pop(0)
+            self.timeseries[0].append(t)
+            while len(self.timeseries[0]) > 0 and self.timeseries[0][0] < t - 4:
+                self.timeseries[0].pop(0)
+                self.dataseries[0].pop(0)
             await asyncio.sleep(random.random() / 100)
+
+    async def sin_wave(self):
+        while True:
+            t = time.time()
+            self.dataseries[0].append(
+                8000 * np.sin(t) + 8000
+            )
+            self.timeseries[0].append(t)
+            while len(self.timeseries[0]) > 0 and self.timeseries[0][0] < t - 4:
+                self.timeseries[0].pop(0)
+                self.dataseries[0].pop(0)
+            await asyncio.sleep(1 / 1000)
 
 
 if __name__ == "__main__":
