@@ -1,5 +1,6 @@
 import asyncio
 import matplotlib
+import numpy as np
 import random
 import tkinter as tk
 import time
@@ -18,10 +19,12 @@ matplotlib.use("TkAgg")
 
 class Oscilloscope:
     name = "Oscilloscope"
-    dataseries = []
-    timeseries = []
+    channels = 8
 
     def __init__(self, loop):
+        self.dataseries = [[] for _ in range(self.channels)]
+        self.timeseries = [[] for _ in range(self.channels)]
+
         self.loop = loop
 
         self.ui_setup()
@@ -30,10 +33,18 @@ class Oscilloscope:
         self.module_interface = module.Module(self.name, self.patching_callback)
         self.data = self.module_interface.add_input(self.data_callback, name="Data")
 
-        loop.create_task(self.data_run())
+        # loop.create_task(self.data_run())
 
     def data_callback(self, data):
-        pass
+        result = np.frombuffer(data, dtype=np.int16)
+        result = result.reshape((len(result) // self.channels, self.channels))
+        t = time.time()
+        for i in range(self.channels):
+            self.dataseries[i].append(result[0, i])
+            self.timeseries[i].append(t)
+            while len(self.timeseries[0]) > 0 and self.timeseries[0][0] < t - 4:
+                self.timeseries[0].pop(0)
+                self.dataseries[0].pop(0)
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -66,9 +77,11 @@ class Oscilloscope:
         self.fig_canvas.get_tk_widget().place(x=10, y=10)
 
         ax = fig.add_subplot()
-        self.plot_line = Line2D(self.dataseries, self.timeseries)
-        ax.add_line(self.plot_line)
+        self.plot_lines = [Line2D([], [], color=f"C{i}") for i in range(self.channels)]
+        for line in self.plot_lines:
+            ax.add_line(line)
         ax.set_xlim([0, 4])
+        ax.set_ylim([-1000, 30000])
         ax.xaxis.set_ticklabels([])
         ax.yaxis.set_ticklabels([])
         ax.tick_params(direction="in", left=True, right=True, top=True, bottom=True)
@@ -77,9 +90,10 @@ class Oscilloscope:
     async def ui_task(self, interval=(1 / 30)):
         while True:
             t = time.time()
-            self.plot_line.set_data(
-                [ts - t + 4 for ts in self.timeseries], self.dataseries
-            )
+            for i, line in enumerate(self.plot_lines):
+                line.set_data(
+                    [ts - t + 4 for ts in self.timeseries[i]], self.dataseries[i]
+                )
             self.fig_canvas.draw()
             self.root.update()
             await asyncio.sleep(interval)
