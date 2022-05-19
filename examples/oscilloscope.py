@@ -1,10 +1,9 @@
 import asyncio
 import matplotlib
 import random
-import tkinter
+import tkinter as tk
 import time
 
-from tkinter import ttk
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.lines import Line2D
@@ -25,57 +24,79 @@ class Oscilloscope:
     def __init__(self, loop):
         self.loop = loop
 
-        self.module_interface = module.Module(self.name)
+        self.ui_setup()
+        loop.create_task(self.ui_task())
+
+        self.module_interface = module.Module(self.name, self.patching_callback)
         self.data = self.module_interface.add_input(self.data_callback, name="Data")
 
-        loop.create_task(self.ui_task())
         loop.create_task(self.data_run())
 
     def data_callback(self, data):
         pass
 
-    async def ui_task(self, interval=(1 / 30)):
-        root = tkinter.Tk()
-        root.geometry("400x500+260+50")
+    def ui_setup(self):
+        self.root = tk.Tk()
+        self.root.geometry("400x500+260+50")
 
-        self.cbdataval = tkinter.BooleanVar()
+        self.root.title(self.name)
 
-        self.cbdata = ttk.Checkbutton(
-            root, text="Data", variable=self.cbdataval, command=self.data_check_handler
+        self.cbdataval = tk.BooleanVar()
+
+        self.cbdata = tk.Checkbutton(
+            self.root,
+            text="Data",
+            variable=self.cbdataval,
+            command=self.data_check_handler,
         )
         self.cbdata.place(x=10, y=430)
 
-        ttk.Label(root, text=self.name).place(x=100, y=430)
-        ttk.Button(root, text="Quit", command=self.shutdown).place(x=250, y=430)
+        self.statusbar = tk.Label(
+            self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
+        )
+        self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        tk.Button(self.root, text="Quit", command=self.shutdown).place(x=250, y=430)
 
         dpi = 80
         size = (380 / dpi, 350 / dpi)
         fig = Figure(figsize=size, dpi=dpi)
         fig.set_tight_layout(True)
-        fig_canvas = FigureCanvasTkAgg(fig, root)
-        fig_canvas.get_tk_widget().place(x=10, y=10)
+        self.fig_canvas = FigureCanvasTkAgg(fig, self.root)
+        self.fig_canvas.get_tk_widget().place(x=10, y=10)
 
         ax = fig.add_subplot()
-        line = Line2D(self.dataseries, self.timeseries)
-        ax.add_line(line)
+        self.plot_line = Line2D(self.dataseries, self.timeseries)
+        ax.add_line(self.plot_line)
         ax.set_xlim([0, 4])
         ax.xaxis.set_ticklabels([])
         ax.yaxis.set_ticklabels([])
         ax.tick_params(direction="in", left=True, right=True, top=True, bottom=True)
         ax.grid(which="both")
 
+    async def ui_task(self, interval=(1 / 30)):
         while True:
             t = time.time()
-            line.set_data([ts - t + 4 for ts in self.timeseries], self.dataseries)
-            fig_canvas.draw()
-            root.update()
+            self.plot_line.set_data(
+                [ts - t + 4 for ts in self.timeseries], self.dataseries
+            )
+            self.fig_canvas.draw()
+            self.root.update()
             await asyncio.sleep(interval)
 
     def data_check_handler(self):
         self.data.patch_enabled(self.cbdataval.get())
 
     def shutdown(self):
+        for task in asyncio.all_tasks():
+            task.cancel()
+        asyncio.ensure_future(self.quit())
+
+    async def quit(self):
         self.loop.stop()
+
+    def patching_callback(self, state):
+        self.statusbar.config(text=str(state))
 
     async def data_run(self):
         while True:

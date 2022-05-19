@@ -2,10 +2,9 @@ import asyncio
 import mido
 import numpy as np
 import time
-import tkinter
+import tkinter as tk
 
 from operator import itemgetter
-from tkinter import ttk
 
 from brain import module
 
@@ -32,7 +31,14 @@ class Envgen:
     def __init__(self, loop):
         self.loop = loop
 
-        self.module_interface = module.Module(self.name)
+        self.ui_setup()
+        loop.create_task(self.ui_task())
+
+        logging.info("Opening all midi inputs by default...")
+        for inp in mido.get_input_names():
+            loop.create_task(self.midi_task(mido.open_input(inp)))
+
+        self.module_interface = module.Module(self.name, self.patching_callback)
         params = {
             "channels": self.channels,
             "samplerate": self.updatefreq,
@@ -47,42 +53,55 @@ class Envgen:
         self.asredest = self.module_interface.add_output(name="ASR Envelope", **params)
 
         loop.create_task(self.output_task())
-        loop.create_task(self.ui_task())
 
-        logging.info("Opening all midi inputs by default...")
-        for inp in mido.get_input_names():
-            loop.create_task(self.midi_task(mido.open_input(inp)))
+    def ui_setup(self):
+        self.root = tk.Tk()
+        self.root.geometry("200x500+50+50")
 
-    async def ui_task(self, interval=1 / 60):
-        root = tkinter.Tk()
-        root.geometry("200x500+50+50")
+        self.root.title(self.name)
 
-        self.cbnoteval = tkinter.BooleanVar()
-        self.cbgateval = tkinter.BooleanVar()
-        self.cbasrval = tkinter.BooleanVar()
+        self.cbnoteval = tk.BooleanVar()
+        self.cbgateval = tk.BooleanVar()
+        self.cbasrval = tk.BooleanVar()
 
-        self.cbnote = ttk.Checkbutton(
-            root, text="Note", variable=self.cbnoteval, command=self.note_check_handler
+        self.cbnote = tk.Checkbutton(
+            self.root,
+            text="Note",
+            variable=self.cbnoteval,
+            command=self.note_check_handler,
         )
         self.cbnote.place(x=10, y=50)
-        self.cbgate = ttk.Checkbutton(
-            root, text="Gate", variable=self.cbgateval, command=self.gate_check_handler
+        self.cbgate = tk.Checkbutton(
+            self.root,
+            text="Gate",
+            variable=self.cbgateval,
+            command=self.gate_check_handler,
         )
         self.cbgate.place(x=10, y=90)
-        self.cbasr = ttk.Checkbutton(
-            root,
+        self.cbasr = tk.Checkbutton(
+            self.root,
             text="ASR Envelope",
             variable=self.cbasrval,
             command=self.asr_check_handler,
         )
         self.cbasr.place(x=10, y=130)
 
-        ttk.Label(root, text=self.name).place(x=10, y=10)
-        ttk.Button(root, text="Quit", command=self.shutdown).place(x=10, y=170)
+        tk.Label(self.root, text=self.name).place(x=10, y=10)
+        tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
 
+        self.statusbar = tk.Label(
+            self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
+        )
+        self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    async def ui_task(self, interval=(1 / 60)):
         while True:
-            root.update()
-            await asyncio.sleep(interval)
+            try:
+                self.root.update()
+                await asyncio.sleep(interval)
+            except tk.TclError:
+                self.shutdown()
+                break
 
     def note_check_handler(self):
         self.notedest.patch_enabled(self.cbnoteval.get())
@@ -95,21 +114,29 @@ class Envgen:
 
     def check_handler(self):
         if self.cbnoteval.get():
-            self.cbgate["state"] = tkinter.DISABLED
-            self.cbasr["state"] = tkinter.DISABLED
+            self.cbgate["state"] = tk.DISABLED
+            self.cbasr["state"] = tk.DISABLED
         elif self.cbgateval.get():
-            self.cbnote["state"] = tkinter.DISABLED
-            self.cbasr["state"] = tkinter.DISABLED
+            self.cbnote["state"] = tk.DISABLED
+            self.cbasr["state"] = tk.DISABLED
         elif self.cbasrval.get():
-            self.cbnote["state"] = tkinter.DISABLED
-            self.cbgate["state"] = tkinter.DISABLED
+            self.cbnote["state"] = tk.DISABLED
+            self.cbgate["state"] = tk.DISABLED
         else:
-            self.cbnote["state"] = tkinter.NORMAL
-            self.cbgate["state"] = tkinter.NORMAL
-            self.cbasr["state"] = tkinter.NORMAL
+            self.cbnote["state"] = tk.NORMAL
+            self.cbgate["state"] = tk.NORMAL
+            self.cbasr["state"] = tk.NORMAL
 
     def shutdown(self):
+        for task in asyncio.all_tasks():
+            task.cancel()
+        asyncio.ensure_future(self.quit())
+
+    async def quit(self):
         self.loop.stop()
+
+    def patching_callback(self, state):
+        self.statusbar.config(text=str(state))
 
     async def midi_task(self, port, interval=1 / 60):
         while True:
