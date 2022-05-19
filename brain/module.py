@@ -8,20 +8,19 @@ from enum import Enum
 from itertools import chain
 
 
-class InputJack:
-    def __init__(self, data_callback, params):
-        self.callback = data_callback
-        self.params = params
+class Jack:
+    def __init__(self, parent_module):
         self.state = False
+        self.parent_module = parent_module
 
     def patch_enabled(self, state: bool):
         # Indicate the jack is available for patching and notify other modules
         if self.state != state:
             self.state = state
-            self._owning_module.update_patch()
+            self.parent_module.update_patch()
 
     def is_patched(self) -> bool:
-        # Returns True if another module is sending data to the jack
+        # Returns True if this jack is connected to another one
         return False
 
     def clear(self):
@@ -29,30 +28,23 @@ class InputJack:
         pass
 
 
-class OutputJack:
-    def __init__(self, **kwargs):
+class InputJack(Jack):
+    def __init__(self, parent_module, data_callback, **kwargs):
+        self.callback = data_callback
+        self.params = kwargs
+        super().__init__(parent_module)
+
+
+class OutputJack(Jack):
+    def __init__(self, parent_module, **kwargs):
         self.params = kwargs
         self.destinations = []
-        self.state = False
+        super().__init__(parent_module)
 
     def send(self, data: bytes):
         rtp_header = bytes("############", "ASCII")
         for loc in self.destinations:
-            self._owning_module._sock.sendto(rtp_header + data, loc)
-
-    def patch_enabled(self, state: bool):
-        # Indicate the jack is available for patching and notify other modules
-        if self.state != state:
-            self.state = state
-            self._owning_module.update_patch()
-
-    def is_patched(self) -> bool:
-        # Returns True if another module is consuming the data from this jack
-        return False
-
-    def clear(self):
-        # Disconnect this jack from all other modules
-        pass
+            self.parent_module._sock.sendto(rtp_header + data, loc)
 
 
 class Module:
@@ -80,17 +72,17 @@ class Module:
             loop.create_datagram_endpoint(lambda: self.protocol, sock=self.sock)
         )
 
-    def add_input(self, data_callback) -> InputJack:
+    def add_input(self, data_callback, **kwargs) -> InputJack:
         # Adds a new input to the module
-        jack = InputJack(data_callback)
-        jack._owning_module = self
+        jack = InputJack(
+            self, data_callback, id=len(self.outputs) + len(self.inputs), **kwargs
+        )
         self.inputs.append(jack)
         return jack
 
     def add_output(self, **kwargs) -> OutputJack:
         # Adds a new output to the module
-        jack = OutputJack(id=len(self.outputs), **kwargs)
-        jack._owning_module = self
+        jack = OutputJack(self, id=len(self.outputs) + len(self.inputs), **kwargs)
         self.outputs.append(jack)
         return jack
 
@@ -165,11 +157,9 @@ class PatchProtocol(asyncio.DatagramProtocol):
             response = json.loads(data)
         except json.JSONDecodeError:
             return
-        if (
-            "message" not in response
-            or "uuid" not in response
-            or response["uuid"] == self.uuid
-        ):
+        if any(k not in response for k in ("message", "uuid", "state")):
+            return
+        if response["uuid"] == self.uuid:
             return
 
         if response["message"] == "UPDATE":
