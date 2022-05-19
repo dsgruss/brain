@@ -1,6 +1,7 @@
 import asyncio
 import netifaces
 import json
+import logging
 import socket
 import uuid
 
@@ -95,7 +96,7 @@ class Module:
     def update_patch_state(self, patch_state):
         if self.patch_state != patch_state:
             self.patch_state = patch_state
-            print(patch_state)
+            logging.info(patch_state)
 
 
 class PatchState(Enum):
@@ -128,16 +129,15 @@ class PatchProtocol(asyncio.DatagramProtocol):
         super().__init__()
 
     def connection_made(self, transport):
-        print("Connection made")
+        logging.info("Connection made")
         self.transport = transport
 
     def datagram_send(self, json_msg):
-        print("=>")
-        print(json_msg)
+        logging.info("=> " + str(json_msg))
         payload = bytes(json.dumps(json_msg), "utf8")
         for addr in self.broadcast_addrs:
             self.transport.sendto(payload, addr)
-            print(addr)
+            logging.info(addr)
 
     def update(self, local_state):
         # Updates the local state and triggers a global check-in

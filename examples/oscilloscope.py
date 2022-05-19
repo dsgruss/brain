@@ -11,6 +11,9 @@ from matplotlib.lines import Line2D
 
 from brain import module
 
+import logging
+
+logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 matplotlib.use("TkAgg")
 
 

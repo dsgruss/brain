@@ -9,6 +9,10 @@ from tkinter import ttk
 
 from brain import module
 
+import logging
+
+logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
+
 
 class Envgen:
     # Promote midi stream to control voltages
@@ -45,7 +49,7 @@ class Envgen:
         loop.create_task(self.output_task())
         loop.create_task(self.ui_task())
 
-        print("Opening all midi inputs by default...")
+        logging.info("Opening all midi inputs by default...")
         for inp in mido.get_input_names():
             loop.create_task(self.midi_task(mido.open_input(inp)))
 
@@ -110,7 +114,7 @@ class Envgen:
     async def midi_task(self, port, interval=1 / 60):
         while True:
             for message in port.iter_pending():
-                print(message)
+                logging.info(message)
                 self.timestamp += 1
                 if message.type == "note_off":
                     for v in self.voices:
@@ -131,13 +135,10 @@ class Envgen:
                         # Otherwise, steal a voice. In this case, take the oldest note played. We
                         # also have a choice of whether to just change the pitch (done here), or to
                         # shut the note off and retrigger.
-                        voice_steal = sorted(
-                            (v for v in self.voices), key=itemgetter("timestamp")
-                        )[0]
+                        voice_steal = min(self.voices, key=itemgetter("timestamp"))
                         voice_steal["note"] = message.note
                         voice_steal["timestamp"] = self.timestamp
-                for v in self.voices:
-                    print("\t", v)
+                logging.info("\n\t".join([str(v) for v in self.voices]))
             await asyncio.sleep(interval)
 
     async def output_task(self):
