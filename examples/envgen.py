@@ -51,7 +51,7 @@ class Envgen:
 
     async def ui_task(self, interval=1 / 60):
         root = tkinter.Tk()
-        root.geometry("200x500")
+        root.geometry("200x500+50+50")
 
         self.cbnoteval = tkinter.BooleanVar()
         self.cbgateval = tkinter.BooleanVar()
