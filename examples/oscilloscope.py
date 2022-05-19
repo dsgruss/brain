@@ -20,6 +20,7 @@ matplotlib.use("TkAgg")
 class Oscilloscope:
     name = "Oscilloscope"
     channels = 8
+    time_div = 4.0  # sec
 
     def __init__(self, loop):
         self.dataseries = [[] for _ in range(self.channels)]
@@ -42,9 +43,9 @@ class Oscilloscope:
         for i in range(self.channels):
             self.dataseries[i].append(result[0, i])
             self.timeseries[i].append(t)
-            while len(self.timeseries[0]) > 0 and self.timeseries[0][0] < t - 4:
-                self.timeseries[0].pop(0)
-                self.dataseries[0].pop(0)
+            while len(self.timeseries[i]) > 0 and self.timeseries[i][0] < t - self.time_div:
+                self.timeseries[i].pop(0)
+                self.dataseries[i].pop(0)
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -80,7 +81,7 @@ class Oscilloscope:
         self.plot_lines = [Line2D([], [], color=f"C{i}") for i in range(self.channels)]
         for line in self.plot_lines:
             ax.add_line(line)
-        ax.set_xlim([0, 4])
+        ax.set_xlim([0, self.time_div])
         ax.set_ylim([-1000, 30000])
         ax.xaxis.set_ticklabels([])
         ax.yaxis.set_ticklabels([])
