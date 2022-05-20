@@ -146,23 +146,22 @@ class MidiToCV:
         """Send the data as CV over over all requested ports and addresses at the configured sample
         rate"""
 
+        t = time.perf_counter()
+        voct_data = np.zeros((1, 8), dtype=np.int16)
+        gate_data = np.zeros((1, 8), dtype=np.int16)
         while True:
-            currtime = time.time()
+            dt = time.perf_counter() - t
+            while dt > (1 / self.updatefreq):
+                for i, v in enumerate(self.voices):
+                    voct_data[0, i] = v["note"] * 256
+                    gate_data[0, i] = 16000 if v["on"] else 0
 
-            voct_data = np.zeros((1, 8), dtype=np.int16)
-            gate_data = np.zeros((1, 8), dtype=np.int16)
-            for i, v in enumerate(self.voices):
-                voct_data[0, i] = v["note"] * 256
-                gate_data[0, i] = 16000 if v["on"] else 0
+                self.notedest.send(voct_data.tobytes())
+                self.gatedest.send(gate_data.tobytes())
+                t += 1 / self.updatefreq
+                dt = time.perf_counter() - t
 
-            self.notedest.send(voct_data.tobytes())
-            self.gatedest.send(gate_data.tobytes())
-
-            dtime = time.time() - currtime
-            if dtime > (1 / self.updatefreq):
-                continue
-            else:
-                await asyncio.sleep((1 / self.updatefreq) - dtime)
+            await asyncio.sleep(0)
 
 
 if __name__ == "__main__":
