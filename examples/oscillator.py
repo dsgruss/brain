@@ -90,10 +90,10 @@ class Oscillator:
                 break
 
     def note_check_handler(self):
-        self.notedest.patch_enabled(self.cbgateval.get())
+        self.notedest.patch_enabled(self.cbnoteval.get())
 
     def out_check_handler(self):
-        self.outdest.patch_enabled(self.cbasrval.get())
+        self.outdest.patch_enabled(self.cboutval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():
