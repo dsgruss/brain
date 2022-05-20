@@ -37,7 +37,7 @@ class MidiToCV:
         self.module_interface = module.Module(self.name, self.patching_callback)
         params = {
             "channels": self.channels,
-            "samplerate": self.updatefreq,
+            "sample_rate": self.updatefreq,
             "format": "L16",
         }
         self.notedest = self.module_interface.add_output(name="Note", **params)

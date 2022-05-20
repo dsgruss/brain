@@ -34,20 +34,22 @@ class InputJack(Jack):
         self.callback = data_callback
         self.params = kwargs
 
-        self.protocol = None
+        self.patched = False
 
         super().__init__(parent_module)
 
     def is_patched(self) -> bool:
-        return self.protocol is not None
+        return self.patched
 
     def clear(self):
         if self.is_patched():
             self.endpoint.close()
             self.sock.close()
-            self.protocol = None
+            self.patched = False
 
-    def connect(self, address, port):
+    def connect(self, address, port, sample_rate):
+        self.sending_sample_rate = sample_rate
+
         if self.is_patched():
             self.clear()
 
@@ -62,14 +64,17 @@ class InputJack(Jack):
         )
         loop.create_task(self.endpoint)
 
+        self.patched = True
+
     def proto_callback(self, data):
-        self.callback(data)
+        self.callback(data, self.sending_sample_rate)
 
 
 class OutputJack(Jack):
     def __init__(self, parent_module, address, **kwargs):
         self.params = kwargs
 
+        self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         # For now we just pick a port, but this should be negotiated during device discovery
         self.endpoint = (address, random.randrange(49152, 65535))
         logging.info("Jack endpoint: " + str(self.endpoint))
@@ -78,7 +83,7 @@ class OutputJack(Jack):
 
     def send(self, data: bytes):
         # Currently sending all the data at all times
-        self.parent_module.sock.sendto(data, self.endpoint)
+        self.sock.sendto(data, self.endpoint)
 
 
 class Module:
@@ -160,6 +165,7 @@ class Module:
                 "type": "output",
                 "address": j.endpoint[0],
                 "port": j.endpoint[1],
+                "sample_rate": j.params["sample_rate"],
             }
             for j in self.outputs
             if j.state
@@ -185,7 +191,9 @@ class Module:
 
     def make_connection(self, input, output):
         input_jack = [j for j in self.inputs if j.params["id"] == input["id"]][0]
-        input_jack.connect(self.broadcast_addr["addr"], output["port"])
+        input_jack.connect(
+            self.broadcast_addr["addr"], output["port"], output["sample_rate"]
+        )
 
 
 class PatchState(Enum):

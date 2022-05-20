@@ -1,6 +1,7 @@
 import asyncio
 import numpy as np
 import tkinter as tk
+import time
 
 from brain import module
 
@@ -20,7 +21,7 @@ class ASREnvelope:
     grid_pos = (4, 0)
 
     gates = [0] * channels
-    level = np.zeros((1, 8), dtype=np.int16)
+    level = [0] * channels
 
     def __init__(self, loop):
         self.loop = loop
@@ -31,10 +32,12 @@ class ASREnvelope:
         self.module_interface = module.Module(self.name, self.patching_callback)
         params = {
             "channels": self.channels,
-            "samplerate": self.updatefreq,
+            "sample_rate": self.updatefreq,
             "format": "L16",
         }
-        self.gatedest = self.module_interface.add_input(self.data_callback, name="Gate In")
+        self.gatedest = self.module_interface.add_input(
+            self.data_callback, name="Gate In"
+        )
         self.asredest = self.module_interface.add_output(name="ASR Envelope", **params)
 
         loop.create_task(self.output_task())
@@ -75,7 +78,7 @@ class ASREnvelope:
         )
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def data_callback(self, data):
+    def data_callback(self, data, sample_rate):
         result = np.frombuffer(data, dtype=np.int16)
         result = result.reshape((len(result) // self.channels, self.channels))
         for i in range(self.channels):
@@ -108,18 +111,25 @@ class ASREnvelope:
         self.statusbar.config(text=str(state))
 
     async def output_task(self):
+        t = time.perf_counter()
+        astep = 16000 / self.updatefreq / self.atime
+        rstep = 16000 / self.updatefreq / self.rtime
+        output = np.zeros((1, self.channels), dtype=np.int16)
         while True:
-            astep = round(16000 / self.updatefreq / self.atime)
-            rstep = round(16000 / self.updatefreq / self.rtime)
-            for i, v in enumerate(self.gates):
-                if self.level[0, i] < v:
-                    self.level[0, i] = min(v, self.level[0, i] + astep)
-                elif self.level[0, i] > v:
-                    self.level[0, i] = max(v, self.level[0, i] - rstep)
+            dt = time.perf_counter() - t
+            while dt > (1 / self.updatefreq):
+                for i, v in enumerate(self.gates):
+                    if self.level[i] < v:
+                        self.level[i] = min(v, self.level[i] + astep)
+                    elif self.level[i] > v:
+                        self.level[i] = max(v, self.level[i] - rstep)
+                    output[0, i] = round(self.level[i])
 
-            self.asredest.send(self.level.tobytes())
+                self.asredest.send(output.tobytes())
+                t += 1 / self.updatefreq
+                dt = time.perf_counter() - t
 
-            await asyncio.sleep((1 / self.updatefreq))
+            await asyncio.sleep(0)
 
 
 if __name__ == "__main__":

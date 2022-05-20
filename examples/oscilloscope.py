@@ -24,7 +24,6 @@ class Oscilloscope:
     grid_size = (8, 10)
     grid_pos = (8, 0)
 
-
     def __init__(self, loop):
         self.dataseries = [[] for _ in range(self.channels)]
         self.timeseries = [[] for _ in range(self.channels)]
@@ -39,17 +38,17 @@ class Oscilloscope:
 
         # loop.create_task(self.random_square_wave())
         # loop.create_task(self.sin_wave())
+        # loop.create_task(self.triangle_wave())
 
-    def data_callback(self, data):
+    def data_callback(self, data, sample_rate):
         result = np.frombuffer(data, dtype=np.int16)
-        result = result.reshape((len(result) // self.channels, self.channels))
-        t = time.time()
+        if len(self.timeseries[0]) == 0:
+            t = 0
+        else:
+            t = self.timeseries[0][-1] + (1 / sample_rate)
         for i in range(self.channels):
-            self.dataseries[i].append(result[0, i])
+            self.dataseries[i].append(result[i])
             self.timeseries[i].append(t)
-            while len(self.timeseries[i]) > 0 and self.timeseries[i][0] < t - self.time_div:
-                self.timeseries[i].pop(0)
-                self.dataseries[i].pop(0)
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -96,12 +95,20 @@ class Oscilloscope:
         ax.tick_params(direction="in", left=True, right=True, top=True, bottom=True)
         ax.grid(which="both")
 
-    async def ui_task(self, interval=(1 / 30)):
+    async def ui_task(self, interval=(1 / 60)):
         while True:
-            t = time.time()
+            for i in range(self.channels):
+                while (
+                    len(self.timeseries[i]) >= 2
+                    and self.timeseries[i][-1] - self.timeseries[i][0] > self.time_div
+                ):
+                    self.timeseries[i].pop(0)
+                    self.dataseries[i].pop(0)
+
             for i, line in enumerate(self.plot_lines):
                 line.set_data(
-                    [ts - t + 4 for ts in self.timeseries[i]], self.dataseries[i]
+                    [ts - self.timeseries[i][0] for ts in self.timeseries[i]],
+                    self.dataseries[i],
                 )
             self.fig_canvas.draw()
             self.root.update()
@@ -128,7 +135,10 @@ class Oscilloscope:
                 (16000 if round(t) % 2 == 0 else 0) + random.random() * 1000
             )
             self.timeseries[0].append(t)
-            while len(self.timeseries[0]) > 0 and self.timeseries[0][0] < t - 4:
+            while (
+                len(self.timeseries[0]) > 0
+                and self.timeseries[0][0] < t - self.time_div
+            ):
                 self.timeseries[0].pop(0)
                 self.dataseries[0].pop(0)
             await asyncio.sleep(random.random() / 100)
@@ -136,14 +146,38 @@ class Oscilloscope:
     async def sin_wave(self):
         while True:
             t = time.time()
-            self.dataseries[0].append(
-                8000 * np.sin(t) + 8000
-            )
+            self.dataseries[0].append(8000 * np.sin(t) + 8000)
             self.timeseries[0].append(t)
-            while len(self.timeseries[0]) > 0 and self.timeseries[0][0] < t - 4:
+            while (
+                len(self.timeseries[0]) > 0
+                and self.timeseries[0][0] < t - self.time_div
+            ):
                 self.timeseries[0].pop(0)
                 self.dataseries[0].pop(0)
             await asyncio.sleep(1 / 1000)
+
+    async def triangle_wave(self):
+        val = 0
+        up = True
+        while True:
+            t = time.time()
+            if up:
+                val += 80
+                if val == 16000:
+                    up = False
+            else:
+                val -= 80
+                if val == 0:
+                    up = True
+            self.dataseries[0].append(val)
+            self.timeseries[0].append(t)
+            while (
+                len(self.timeseries[0]) > 0
+                and self.timeseries[0][0] < t - self.time_div
+            ):
+                self.timeseries[0].pop(0)
+                self.dataseries[0].pop(0)
+            await asyncio.sleep(1 / 100)
 
 
 if __name__ == "__main__":
