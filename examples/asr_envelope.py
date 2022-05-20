@@ -11,7 +11,6 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
 class ASREnvelope:
-    # Promote midi stream to control voltages
     channels = 8
     updatefreq = 1000  # Hz
     atime = 1  # sec
