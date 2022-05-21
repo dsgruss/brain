@@ -105,7 +105,7 @@ class Oscillator:
         block_size = round(self.mod.sample_rate / self.mod.packet_rate)  # samples
         output = np.zeros((block_size, self.mod.channels), dtype=self.mod.sample_type)
 
-        wavetable_size = 512  # samples
+        wavetable_size = 2048  # samples
         wavetable = np.array(
             [
                 round(8000 * np.sin(2 * np.pi * i / wavetable_size))
