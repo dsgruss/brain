@@ -13,12 +13,40 @@ import logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
+class Empty(Exception):
+    "Exception raised when OverwriteBuffer is accessed empty"
+    pass
+
+
+class OverwriteBuffer:
+    """A thread-safe queue that drops the oldest items when another one is added that would
+    otherwise increase the count beyond `maxsize`. In this way the time delta between the first and
+    last items is minimized and events will roughly remain in sync. By default, it will block while
+    waiting for exclusive access to the queue, but will not block while waiting for new items."""
+
+    def __init__(self, maxsize):
+        self.maxsize = maxsize
+        self.buffer = deque()
+        self.buffer_lock = threading.Lock()
+
+    def put(self, item):
+        with self.buffer_lock:
+            self.buffer.appendleft(item)
+            while len(self.buffer) >= self.maxsize:
+                self.buffer.pop()
+
+    def get(self):
+        with self.buffer_lock:
+            if len(self.buffer) == 0:
+                raise Empty
+            else:
+                return self.buffer.pop()
+
+
 class AudioInterface:
     name = "Audio Interface"
     grid_size = (4, 10)
     grid_pos = (12, 0)
-    audio_buffer = deque()
-    audio_buffer_lock = threading.Lock()
 
     def __init__(self, loop):
         self.loop = loop
@@ -39,6 +67,7 @@ class AudioInterface:
         self.mod = module.Module(self.name, self.patching_callback)
         self.indest = self.mod.add_input("Audio In", self.data_callback)
 
+        self.audio_buffer = OverwriteBuffer(self.mod.buffer_size)
         self.block_size = round(self.mod.sample_rate / self.mod.packet_rate)
         s = sd.OutputStream(
             device=default_device,
@@ -80,12 +109,7 @@ class AudioInterface:
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def data_callback(self, data):
-        with self.audio_buffer_lock:
-            self.audio_buffer.appendleft(
-                np.frombuffer(data, dtype=self.mod.sample_type)
-            )
-            while len(self.audio_buffer) >= self.mod.buffer_size:
-                self.audio_buffer.pop()
+        self.audio_buffer.put(np.frombuffer(data, dtype=self.mod.sample_type))
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -111,11 +135,11 @@ class AudioInterface:
         self.statusbar.config(text=str(state))
 
     def audio_callback(self, outdata, frames, time, status):
-        data = np.zeros((self.block_size, self.mod.channels))
-        with self.audio_buffer_lock:
-            if len(self.audio_buffer) > 0:
-                data = self.audio_buffer.pop()
-        data = data.reshape((self.block_size, self.mod.channels))
+        try:
+            data = self.audio_buffer.get()
+            data = data.reshape((self.block_size, self.mod.channels))
+        except Empty:
+            data = np.zeros((self.block_size, self.mod.channels))
         outdata[:, 0] = data[:, 0]
 
 
