@@ -19,34 +19,35 @@ matplotlib.use("TkAgg")
 
 class Oscilloscope:
     name = "Oscilloscope"
-    channels = 8
     time_div = 4.0  # sec
     grid_size = (8, 10)
-    grid_pos = (8, 0)
+    grid_pos = (16, 0)
 
     def __init__(self, loop):
-        self.dataseries = [[] for _ in range(self.channels)]
-        self.timeseries = [[] for _ in range(self.channels)]
-
         self.loop = loop
+
+        self.mod = module.Module(self.name, self.patching_callback)
+        self.data = self.mod.add_input("Data", self.data_callback)
 
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.module_interface = module.Module(self.name, self.patching_callback)
-        self.data = self.module_interface.add_input(self.data_callback, name="Data")
+        self.dataseries = [[] for _ in range(self.mod.channels)]
+        self.timeseries = [[] for _ in range(self.mod.channels)]
 
         # loop.create_task(self.random_square_wave())
         # loop.create_task(self.sin_wave())
         # loop.create_task(self.triangle_wave())
 
-    def data_callback(self, data, sample_rate):
-        result = np.frombuffer(data, dtype=np.int16)
+        self.mod.start()
+
+    def data_callback(self, data):
+        result = np.frombuffer(data, dtype=self.mod.sample_type)
         if len(self.timeseries[0]) == 0:
             t = 0
         else:
-            t = self.timeseries[0][-1] + (1 / sample_rate)
-        for i in range(self.channels):
+            t = self.timeseries[0][-1] + (1 / self.mod.packet_rate)
+        for i in range(self.mod.channels):
             self.dataseries[i].append(result[i])
             self.timeseries[i].append(t)
 
@@ -85,7 +86,9 @@ class Oscilloscope:
         self.fig_canvas.get_tk_widget().place(x=10, y=10)
 
         ax = fig.add_subplot()
-        self.plot_lines = [Line2D([], [], color=f"C{i}") for i in range(self.channels)]
+        self.plot_lines = [
+            Line2D([], [], color=f"C{i}") for i in range(self.mod.channels)
+        ]
         for line in self.plot_lines:
             ax.add_line(line)
         ax.set_xlim([0, self.time_div])
@@ -97,7 +100,7 @@ class Oscilloscope:
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
-            for i in range(self.channels):
+            for i in range(self.mod.channels):
                 while (
                     len(self.timeseries[i]) >= 2
                     and self.timeseries[i][-1] - self.timeseries[i][0] > self.time_div
@@ -115,7 +118,7 @@ class Oscilloscope:
             await asyncio.sleep(interval)
 
     def data_check_handler(self):
-        self.data.patch_enabled(self.cbdataval.get())
+        self.data.set_patch_enabled(self.cbdataval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():

@@ -11,13 +11,9 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
 class Oscillator:
-    channels = 8
-    updatefreq = 1000  # Hz
     name = "Oscillator"
     grid_size = (4, 10)
     grid_pos = (8, 0)
-
-    note = [69 * 256] * channels
 
     def __init__(self, loop):
         self.loop = loop
@@ -25,18 +21,16 @@ class Oscillator:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.module_interface = module.Module(self.name, self.patching_callback)
-        params = {
-            "channels": self.channels,
-            "sample_rate": self.updatefreq,
-            "format": "L16",
-        }
-        self.notedest = self.module_interface.add_input(
-            self.data_callback, name="Note In"
-        )
-        self.outdest = self.module_interface.add_output(name="Output", **params)
+        self.mod = module.Module(self.name, self.patching_callback)
+
+        self.notedest = self.mod.add_input("Note In", self.data_callback)
+        self.outdest = self.mod.add_output(name="Output")
+
+        self.note = [69 * 256] * self.mod.channels
 
         loop.create_task(self.output_task())
+
+        self.mod.start()
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -74,10 +68,10 @@ class Oscillator:
         )
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def data_callback(self, data, sample_rate):
-        result = np.frombuffer(data, dtype=np.int16)
-        result = result.reshape((len(result) // self.channels, self.channels))
-        for i in range(self.channels):
+    def data_callback(self, data):
+        result = np.frombuffer(data, dtype=self.mod.sample_type)
+        result = result.reshape((len(result) // self.mod.channels, self.mod.channels))
+        for i in range(self.mod.channels):
             self.note[i] = result[0, i]
 
     async def ui_task(self, interval=(1 / 60)):
@@ -90,10 +84,10 @@ class Oscillator:
                 break
 
     def note_check_handler(self):
-        self.notedest.patch_enabled(self.cbnoteval.get())
+        self.notedest.set_patch_enabled(self.cbnoteval.get())
 
     def out_check_handler(self):
-        self.outdest.patch_enabled(self.cboutval.get())
+        self.outdest.set_patch_enabled(self.cboutval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -108,8 +102,8 @@ class Oscillator:
 
     async def output_task(self):
         t = time.perf_counter()
-        window_size = 48  # samples
-        output = np.zeros((window_size, self.channels), dtype=np.int16)
+        block_size = round(self.mod.sample_rate / self.mod.packet_rate)  # samples
+        output = np.zeros((block_size, self.mod.channels), dtype=self.mod.sample_type)
 
         wavetable_size = 512  # samples
         wavetable = np.array(
@@ -117,25 +111,23 @@ class Oscillator:
                 round(8000 * np.sin(2 * np.pi * i / wavetable_size))
                 for i in range(wavetable_size)
             ],
-            dtype=np.int16,
+            dtype=self.mod.sample_type,
         )
-        wavetable_pos = [0] * self.channels
+        wavetable_pos = [0] * self.mod.channels
 
         while True:
             dt = time.perf_counter() - t
-            while dt > (1 / self.updatefreq):
+            while dt > (1 / self.mod.packet_rate):
                 for i, v in enumerate(self.note):
                     f = 440 * 2 ** ((v / 256 - 69) / 12)
-                    for j in range(window_size):
+                    for j in range(block_size):
                         output[j, i] = wavetable[int(wavetable_pos[i])]
-                        wavetable_pos[i] += (
-                            f / self.updatefreq * wavetable_size / window_size
-                        )
+                        wavetable_pos[i] += f / self.mod.sample_rate * wavetable_size
                         if wavetable_pos[i] >= wavetable_size:
                             wavetable_pos[i] -= wavetable_size
 
                 self.outdest.send(output.tobytes())
-                t += 1 / self.updatefreq
+                t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 
             await asyncio.sleep(0)

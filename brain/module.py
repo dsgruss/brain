@@ -1,23 +1,30 @@
 import asyncio
-import netifaces
+import itertools
 import json
 import logging
+import netifaces
+import numpy as np
 import random
 import socket
 import uuid
 
 from enum import Enum
+from typing import Callable
 
 
 class Jack:
-    def __init__(self, parent_module):
-        self.state = False
-        self.parent_module = parent_module
+    patch_enabled = False
+    id_iter = itertools.count()
 
-    def patch_enabled(self, state: bool):
+    def __init__(self, parent_module, name):
+        self.parent_module = parent_module
+        self.name = name
+        self.id = next(Jack.id_iter)
+
+    def set_patch_enabled(self, state: bool):
         # Indicate the jack is available for patching and notify other modules
-        if self.state != state:
-            self.state = state
+        if self.patch_enabled != state:
+            self.patch_enabled = state
             self.parent_module.update_patch()
 
     def is_patched(self) -> bool:
@@ -30,13 +37,11 @@ class Jack:
 
 
 class InputJack(Jack):
-    def __init__(self, parent_module, data_callback, **kwargs):
+    def __init__(self, parent_module, data_callback, name):
         self.callback = data_callback
-        self.params = kwargs
-
         self.patched = False
 
-        super().__init__(parent_module)
+        super().__init__(parent_module, name)
 
     def is_patched(self) -> bool:
         return self.patched
@@ -47,9 +52,7 @@ class InputJack(Jack):
             self.sock.close()
             self.patched = False
 
-    def connect(self, address, port, sample_rate):
-        self.sending_sample_rate = sample_rate
-
+    def connect(self, address, port):
         if self.is_patched():
             self.clear()
 
@@ -67,41 +70,77 @@ class InputJack(Jack):
         self.patched = True
 
     def proto_callback(self, data):
-        self.callback(data, self.sending_sample_rate)
+        self.callback(data)
 
 
 class OutputJack(Jack):
-    def __init__(self, parent_module, address, **kwargs):
-        self.params = kwargs
+    def __init__(self, parent_module, address, name):
 
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+
         # For now we just pick a port, but this should be negotiated during device discovery
         self.endpoint = (address, random.randrange(49152, 65535))
         logging.info("Jack endpoint: " + str(self.endpoint))
 
-        super().__init__(parent_module)
+        super().__init__(parent_module, name)
 
     def send(self, data: bytes):
         # Currently sending all the data at all times
         self.sock.sendto(data, self.endpoint)
 
 
+class PatchState(Enum):
+    """Global state possibilities"""
+
+    IDLE = 0  # No buttons pushed across all modules
+    PATCH_ENABLED = 1  # One single button pushed
+    PATCH_TOGGLED = 2  # Two buttons pushed, consisting of an input and output
+    BLOCKED = 3  # Three or more buttons pushed or two of the same type
+
+
 class Module:
-    # Class to handle networking and discovery layers for each module
+    """The `Module` object mediates all of the patching and dataflow between all other modules on
+    the network. Typically, a module only needs to be written as a processor on the input state
+    to the output state and handle the associated user interface.
+
+    :param name: the name of the module
+
+    :param patching_callback: function called when the global patch state changes
+    """
+
+    # Preferred communication subnet in case multiple network interfaces are present
+    preferred_broadcast = "10.255.255.255"
+
+    # Port used to establish the global state and create new patch connections
+    patch_port = 19874
+
+    # Frequency in packets per second to send audio and CV data
+    packet_rate = 1000
+
+    # Audio sample rate in Hz (must be a multiple of packet_rate)
+    sample_rate = 48000
+
+    # Number of independent audio processing channels
+    channels = 8
+
+    # Maximum number of states to buffer
+    buffer_size = 100
+
+    # Sample data type
+    sample_type = np.int16
+
     inputs = []
     outputs = []
-    patch_port = 19874
-    preferred_broadcast = "10.255.255.255"
     broadcast_addr = None
 
-    def __init__(self, name, patching_callback=None):
+    def __init__(
+        self, name: str, patching_callback: Callable[[PatchState], None] = None
+    ):
         # Initializes the module and allows for discovery by management requests
         self.name = name
         self.patching_callback = patching_callback
         self.uuid = str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
-        if patching_callback is not None:
-            patching_callback(self.patch_state)
 
         addresses = []
         for interface in netifaces.interfaces():
@@ -132,43 +171,44 @@ class Module:
             self.patch_port,
             self.update_patch_state,
         )
+
+    def start(self):
+        if self.patching_callback is not None:
+            self.patching_callback(self.patch_state)
+
         loop = asyncio.get_event_loop()
         loop.create_task(
             loop.create_datagram_endpoint(lambda: self.protocol, sock=self.sock)
         )
 
-    def add_input(self, data_callback, **kwargs) -> InputJack:
+    def add_input(self, name="", data_callback=None) -> InputJack:
         # Adds a new input to the module
-        jack = InputJack(
-            self, data_callback, id=len(self.outputs) + len(self.inputs), **kwargs
-        )
+        jack = InputJack(self, data_callback, name)
         self.inputs.append(jack)
         return jack
 
-    def add_output(self, **kwargs) -> OutputJack:
+    def add_output(self, name="") -> OutputJack:
         # Adds a new output to the module
-        jack = OutputJack(
-            self,
-            self.broadcast_addr["broadcast"],
-            id=len(self.outputs) + len(self.inputs),
-            **kwargs
-        )
+        jack = OutputJack(self, self.broadcast_addr["broadcast"], name)
         self.outputs.append(jack)
         return jack
 
     def update_patch(self):
         # Trigger in update in the shared state
-        s = [{"id": j.params["id"], "type": "input"} for j in self.inputs if j.state]
+        s = [
+            {"id": jack.id, "type": "input"}
+            for jack in self.inputs
+            if jack.patch_enabled
+        ]
         s += [
             {
-                "id": j.params["id"],
+                "id": jack.id,
                 "type": "output",
-                "address": j.endpoint[0],
-                "port": j.endpoint[1],
-                "sample_rate": j.params["sample_rate"],
+                "address": jack.endpoint[0],
+                "port": jack.endpoint[1],
             }
-            for j in self.outputs
-            if j.state
+            for jack in self.outputs
+            if jack.patch_enabled
         ]
         self.protocol.update(s)
 
@@ -190,18 +230,8 @@ class Module:
                     self.make_connection(input, output)
 
     def make_connection(self, input, output):
-        input_jack = [j for j in self.inputs if j.params["id"] == input["id"]][0]
-        input_jack.connect(
-            self.broadcast_addr["addr"], output["port"], output["sample_rate"]
-        )
-
-
-class PatchState(Enum):
-    # Global state possibilities
-    IDLE = 0  # No buttons pushed across all modules
-    PATCH_ENABLED = 1  # One single button pushed
-    PATCH_TOGGLED = 2  # Two buttons pushed, consisting of an input and output
-    BLOCKED = 3  # Three or more buttons pushed or two of the same type
+        input_jack = [jack for jack in self.inputs if jack.id == input["id"]][0]
+        input_jack.connect(self.broadcast_addr["addr"], output["port"])
 
 
 class DataProtocol(asyncio.DatagramProtocol):

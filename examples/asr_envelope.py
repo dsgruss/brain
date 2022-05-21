@@ -11,16 +11,11 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
 class ASREnvelope:
-    channels = 8
-    updatefreq = 1000  # Hz
     atime = 1  # sec
     rtime = 2  # sec
     name = "ASR Envelope Generator"
     grid_size = (4, 10)
     grid_pos = (4, 0)
-
-    gates = [0] * channels
-    level = [0] * channels
 
     def __init__(self, loop):
         self.loop = loop
@@ -28,18 +23,17 @@ class ASREnvelope:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.module_interface = module.Module(self.name, self.patching_callback)
-        params = {
-            "channels": self.channels,
-            "sample_rate": self.updatefreq,
-            "format": "L16",
-        }
-        self.gatedest = self.module_interface.add_input(
-            self.data_callback, name="Gate In"
-        )
-        self.asredest = self.module_interface.add_output(name="ASR Envelope", **params)
+        self.mod = module.Module(self.name, self.patching_callback)
+
+        self.gatedest = self.mod.add_input("Gate In", self.data_callback)
+        self.asredest = self.mod.add_output("ASR Envelope")
+
+        self.gates = [0] * self.mod.channels
+        self.level = [0] * self.mod.channels
 
         loop.create_task(self.output_task())
+
+        self.mod.start()
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -77,10 +71,10 @@ class ASREnvelope:
         )
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def data_callback(self, data, sample_rate):
-        result = np.frombuffer(data, dtype=np.int16)
-        result = result.reshape((len(result) // self.channels, self.channels))
-        for i in range(self.channels):
+    def data_callback(self, data):
+        result = np.frombuffer(data, dtype=self.mod.sample_type)
+        result = result.reshape((len(result) // self.mod.channels, self.mod.channels))
+        for i in range(self.mod.channels):
             self.gates[i] = result[0, i]
 
     async def ui_task(self, interval=(1 / 60)):
@@ -93,10 +87,10 @@ class ASREnvelope:
                 break
 
     def gate_check_handler(self):
-        self.gatedest.patch_enabled(self.cbgateval.get())
+        self.gatedest.set_patch_enabled(self.cbgateval.get())
 
     def asr_check_handler(self):
-        self.asredest.patch_enabled(self.cbasrval.get())
+        self.asredest.set_patch_enabled(self.cbasrval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -111,12 +105,12 @@ class ASREnvelope:
 
     async def output_task(self):
         t = time.perf_counter()
-        astep = 16000 / self.updatefreq / self.atime
-        rstep = 16000 / self.updatefreq / self.rtime
-        output = np.zeros((1, self.channels), dtype=np.int16)
+        astep = 16000 / self.mod.packet_rate / self.atime
+        rstep = 16000 / self.mod.packet_rate / self.rtime
+        output = np.zeros((1, self.mod.channels), dtype=self.mod.sample_type)
         while True:
             dt = time.perf_counter() - t
-            while dt > (1 / self.updatefreq):
+            while dt > (1 / self.mod.packet_rate):
                 for i, v in enumerate(self.gates):
                     if self.level[i] < v:
                         self.level[i] = min(v, self.level[i] + astep)
@@ -125,7 +119,7 @@ class ASREnvelope:
                     output[0, i] = round(self.level[i])
 
                 self.asredest.send(output.tobytes())
-                t += 1 / self.updatefreq
+                t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 
             await asyncio.sleep(0)
