@@ -8,6 +8,7 @@ import random
 import socket
 import uuid
 
+from collections import deque
 from enum import Enum
 from typing import Callable
 
@@ -39,6 +40,11 @@ class Jack:
 class InputJack(Jack):
     def __init__(self, parent_module, data_callback, name):
         self.callback = data_callback
+        self.data_queue = deque()
+        self.last_seen_data = np.zeros(
+            (parent_module.block_size, parent_module.channels),
+            dtype=parent_module.sample_type,
+        )
         self.patched = False
 
         super().__init__(parent_module, name)
@@ -70,7 +76,24 @@ class InputJack(Jack):
         self.patched = True
 
     def proto_callback(self, data):
-        self.callback(data)
+        if self.callback is not None:
+            self.callback(data)
+        data = np.frombuffer(data, dtype=self.parent_module.sample_type)
+        data = data.reshape(
+            (len(data) // self.parent_module.channels, self.parent_module.channels)
+        )
+        self.last_seen_data = data.copy()
+        self.data_queue.appendleft(data)
+        self.parent_module.check_process()
+
+    def get_data(self):
+        if len(self.data_queue) > 0:
+            return self.data_queue.pop()
+        else:
+            return np.zeros(
+                (self.parent_module.block_size, self.parent_module.channels),
+                dtype=self.parent_module.sample_type,
+            )
 
 
 class OutputJack(Jack):
@@ -120,6 +143,9 @@ class Module:
     # Audio sample rate in Hz (must be a multiple of packet_rate)
     sample_rate = 48000
 
+    # Number of samples in a full-length packet (sample_rate / packet_rate)
+    block_size = 48
+
     # Number of independent audio processing channels
     channels = 8
 
@@ -133,12 +159,10 @@ class Module:
     outputs = []
     broadcast_addr = None
 
-    def __init__(
-        self, name: str, patching_callback: Callable[[PatchState], None] = None
-    ):
-        # Initializes the module and allows for discovery by management requests
+    def __init__(self, name: str, patching_callback=None, process_callback=None):
         self.name = name
         self.patching_callback = patching_callback
+        self.process_callback = process_callback
         self.uuid = str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
 
@@ -232,6 +256,22 @@ class Module:
     def make_connection(self, input, output):
         input_jack = [jack for jack in self.inputs if jack.id == input["id"]][0]
         input_jack.connect(self.broadcast_addr["addr"], output["port"])
+
+    def check_process(self):
+        if self.process_callback is None:
+            return
+
+        data_available = True
+        for jack in self.inputs:
+            if not jack.is_patched():
+                continue
+            if len(jack.data_queue) >= self.buffer_size:
+                self.process_callback()
+                return
+            if len(jack.data_queue) == 0:
+                data_available = False
+        if data_available:
+            self.process_callback()
 
 
 class DataProtocol(asyncio.DatagramProtocol):

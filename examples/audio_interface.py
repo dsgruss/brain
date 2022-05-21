@@ -64,10 +64,14 @@ class AudioInterface:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.mod = module.Module(self.name, self.patching_callback)
-        self.indest = self.mod.add_input("Audio In", self.data_callback)
+        self.mod = module.Module(
+            self.name, self.patching_callback, process_callback=self.data_callback
+        )
+        self.indest = self.mod.add_input("Audio In")
+        self.leveldest = self.mod.add_input("Level")
 
         self.audio_buffer = OverwriteBuffer(self.mod.buffer_size)
+        self.level_buffer = OverwriteBuffer(self.mod.buffer_size)
         self.block_size = round(self.mod.sample_rate / self.mod.packet_rate)
         s = sd.OutputStream(
             device=default_device,
@@ -99,6 +103,14 @@ class AudioInterface:
             command=self.in_check_handler,
         )
         self.cbin.place(x=10, y=50)
+        self.cblevelval = tk.BooleanVar()
+        self.cblevel = tk.Checkbutton(
+            self.root,
+            text="Level",
+            variable=self.cblevelval,
+            command=self.level_check_handler,
+        )
+        self.cblevel.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -108,8 +120,9 @@ class AudioInterface:
         )
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def data_callback(self, data):
-        self.audio_buffer.put(np.frombuffer(data, dtype=self.mod.sample_type))
+    def data_callback(self):
+        self.audio_buffer.put(self.indest.get_data())
+        self.level_buffer.put(self.leveldest.get_data())
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -122,6 +135,9 @@ class AudioInterface:
 
     def in_check_handler(self):
         self.indest.set_patch_enabled(self.cbinval.get())
+
+    def level_check_handler(self):
+        self.leveldest.set_patch_enabled(self.cblevelval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -137,10 +153,13 @@ class AudioInterface:
     def audio_callback(self, outdata, frames, time, status):
         try:
             data = self.audio_buffer.get()
-            data = data.reshape((self.block_size, self.mod.channels))
+            level = self.level_buffer.get()
+
+            outdata[:] = np.zeros((self.block_size, 1))
+            for i in range(self.mod.channels):
+                outdata[:, 0] += (data[:, i] * (level[0, i] / (4 * 16000))).astype(int)
         except Empty:
-            data = np.zeros((self.block_size, self.mod.channels))
-        outdata[:, 0] = data[:, 0]
+            outdata[:] = np.zeros((self.block_size, 1))
 
 
 if __name__ == "__main__":
