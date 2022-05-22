@@ -7,6 +7,7 @@ import threading
 from collections import deque
 
 from brain import module
+from common import tkJack
 
 import logging
 
@@ -48,7 +49,7 @@ class AudioInterface:
     grid_size = (4, 10)
     grid_pos = (12, 0)
 
-    def __init__(self, loop):
+    def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
         hostapis = {api["name"]: api for api in sd.query_hostapis()}
@@ -61,14 +62,14 @@ class AudioInterface:
 
         logging.info("Using device " + sd.query_devices(default_device)["name"])
 
-        self.ui_setup()
-        loop.create_task(self.ui_task())
-
         self.mod = module.Module(
             self.name, self.patching_callback, process_callback=self.data_callback
         )
-        self.indest = self.mod.add_input("Audio In")
-        self.leveldest = self.mod.add_input("Level")
+        self.in_jack = self.mod.add_input("Audio In")
+        self.level_jack = self.mod.add_input("Level")
+
+        self.ui_setup()
+        loop.create_task(self.ui_task())
 
         self.audio_buffer = OverwriteBuffer(self.mod.buffer_size)
         self.level_buffer = OverwriteBuffer(self.mod.buffer_size)
@@ -95,22 +96,8 @@ class AudioInterface:
 
         self.root.title(self.name)
 
-        self.cbinval = tk.BooleanVar()
-        self.cbin = tk.Checkbutton(
-            self.root,
-            text="Audio In",
-            variable=self.cbinval,
-            command=self.in_check_handler,
-        )
-        self.cbin.place(x=10, y=50)
-        self.cblevelval = tk.BooleanVar()
-        self.cblevel = tk.Checkbutton(
-            self.root,
-            text="Level",
-            variable=self.cblevelval,
-            command=self.level_check_handler,
-        )
-        self.cblevel.place(x=10, y=90)
+        tkJack(self.root, self.in_jack, "Audio In").place(x=10, y=50)
+        tkJack(self.root, self.level_jack, "Level").place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -121,8 +108,8 @@ class AudioInterface:
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def data_callback(self):
-        self.audio_buffer.put(self.indest.get_data())
-        self.level_buffer.put(self.leveldest.get_data())
+        self.audio_buffer.put(self.in_jack.get_data())
+        self.level_buffer.put(self.level_jack.get_data())
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -132,12 +119,6 @@ class AudioInterface:
             except tk.TclError:
                 self.shutdown()
                 break
-
-    def in_check_handler(self):
-        self.indest.set_patch_enabled(self.cbinval.get())
-
-    def level_check_handler(self):
-        self.leveldest.set_patch_enabled(self.cblevelval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():

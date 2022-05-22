@@ -10,6 +10,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.lines import Line2D
 
 from brain import module
+from common import tkJack
 
 import logging
 
@@ -27,7 +28,7 @@ class Oscilloscope:
         self.loop = loop
 
         self.mod = module.Module(self.name, self.patching_callback)
-        self.data = self.mod.add_input("Data", self.data_callback)
+        self.data_jack = self.mod.add_input("Data", self.data_callback)
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -61,15 +62,7 @@ class Oscilloscope:
 
         self.root.title(self.name)
 
-        self.cbdataval = tk.BooleanVar()
-
-        self.cbdata = tk.Checkbutton(
-            self.root,
-            text="Data",
-            variable=self.cbdataval,
-            command=self.data_check_handler,
-        )
-        self.cbdata.place(x=10, y=430)
+        tkJack(self.root, self.data_jack, "Data").place(x=10, y=430)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
@@ -116,9 +109,6 @@ class Oscilloscope:
             self.fig_canvas.draw()
             self.root.update()
             await asyncio.sleep(interval)
-
-    def data_check_handler(self):
-        self.data.set_patch_enabled(self.cbdataval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():

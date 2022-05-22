@@ -7,6 +7,7 @@ import tkinter as tk
 from dataclasses import dataclass
 
 from brain import module
+from common import tkJack
 
 import logging
 
@@ -28,28 +29,28 @@ class MidiToCV:
     grid_size = (4, 10)
     grid_pos = (0, 0)
 
-    def __init__(self, loop):
+    def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
-
-        self.ui_setup()
-        loop.create_task(self.ui_task())
 
         logging.info("Opening all midi inputs by default...")
         for inp in mido.get_input_names():
-            loop.create_task(self.midi_task(mido.open_input(inp)))
+            self.loop.create_task(self.midi_task(mido.open_input(inp)))
 
         self.mod = module.Module(self.name, self.patching_callback)
 
         self.voices = [Voice(0, False, 0) for _ in range(self.mod.channels)]
 
-        self.notedest = self.mod.add_output(name="Note")
-        self.gatedest = self.mod.add_output(name="Gate")
-        self.velodest = self.mod.add_output(name="Velocity")
-        self.liftdest = self.mod.add_output(name="Lift")
-        self.piwhdest = self.mod.add_output(name="Pitch Wheel")
-        self.mdwhdest = self.mod.add_output(name="Mod Wheel")
+        self.note_jack = self.mod.add_output(name="Note")
+        self.gate_jack = self.mod.add_output(name="Gate")
+        self.velo_jack = self.mod.add_output(name="Velocity")
+        self.lift_jack = self.mod.add_output(name="Lift")
+        self.piwh_jack = self.mod.add_output(name="Pitch Wheel")
+        self.mdwh_jack = self.mod.add_output(name="Mod Wheel")
 
-        loop.create_task(self.output_task())
+        self.ui_setup()
+        self.loop.create_task(self.ui_task())
+
+        self.loop.create_task(self.output_task())
         self.mod.start()
 
     def ui_setup(self):
@@ -62,24 +63,8 @@ class MidiToCV:
 
         self.root.title(self.name)
 
-        self.cbnoteval = tk.BooleanVar()
-        self.cbgateval = tk.BooleanVar()
-        self.cbasrval = tk.BooleanVar()
-
-        self.cbnote = tk.Checkbutton(
-            self.root,
-            text="Note",
-            variable=self.cbnoteval,
-            command=self.note_check_handler,
-        )
-        self.cbnote.place(x=10, y=50)
-        self.cbgate = tk.Checkbutton(
-            self.root,
-            text="Gate",
-            variable=self.cbgateval,
-            command=self.gate_check_handler,
-        )
-        self.cbgate.place(x=10, y=90)
+        tkJack(self.root, self.note_jack, "Note").place(x=10, y=50)
+        tkJack(self.root, self.gate_jack, "Gate").place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -97,12 +82,6 @@ class MidiToCV:
             except tk.TclError:
                 self.shutdown()
                 break
-
-    def note_check_handler(self):
-        self.notedest.set_patch_enabled(self.cbnoteval.get())
-
-    def gate_check_handler(self):
-        self.gatedest.set_patch_enabled(self.cbgateval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -159,8 +138,8 @@ class MidiToCV:
                     voct_data[0, i] = v.note * 256
                     gate_data[0, i] = 16000 if v.on else 0
 
-                self.notedest.send(voct_data.tobytes())
-                self.gatedest.send(gate_data.tobytes())
+                self.note_jack.send(voct_data.tobytes())
+                self.gate_jack.send(gate_data.tobytes())
                 t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 

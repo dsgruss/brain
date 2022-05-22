@@ -4,6 +4,7 @@ import tkinter as tk
 import time
 
 from brain import module
+from common import tkJack
 
 import logging
 
@@ -17,16 +18,16 @@ class ASREnvelope:
     grid_size = (4, 10)
     grid_pos = (4, 0)
 
-    def __init__(self, loop):
+    def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
-
-        self.ui_setup()
-        loop.create_task(self.ui_task())
 
         self.mod = module.Module(self.name, self.patching_callback)
 
-        self.gatedest = self.mod.add_input("Gate In", self.data_callback)
-        self.asredest = self.mod.add_output("ASR Envelope")
+        self.gate_jack = self.mod.add_input("Gate In", self.data_callback)
+        self.asr_jack = self.mod.add_output("ASR Envelope")
+
+        self.ui_setup()
+        loop.create_task(self.ui_task())
 
         self.gates = [0] * self.mod.channels
         self.level = [0] * self.mod.channels
@@ -45,23 +46,8 @@ class ASREnvelope:
 
         self.root.title(self.name)
 
-        self.cbgateval = tk.BooleanVar()
-        self.cbasrval = tk.BooleanVar()
-
-        self.cbgate = tk.Checkbutton(
-            self.root,
-            text="Gate In",
-            variable=self.cbgateval,
-            command=self.gate_check_handler,
-        )
-        self.cbgate.place(x=10, y=50)
-        self.cbasr = tk.Checkbutton(
-            self.root,
-            text="ASR Envelope",
-            variable=self.cbasrval,
-            command=self.asr_check_handler,
-        )
-        self.cbasr.place(x=10, y=130)
+        tkJack(self.root, self.gate_jack, "Gate In").place(x=10, y=50)
+        tkJack(self.root, self.asr_jack, "ASR Envelope").place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -85,12 +71,6 @@ class ASREnvelope:
             except tk.TclError:
                 self.shutdown()
                 break
-
-    def gate_check_handler(self):
-        self.gatedest.set_patch_enabled(self.cbgateval.get())
-
-    def asr_check_handler(self):
-        self.asredest.set_patch_enabled(self.cbasrval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -118,7 +98,7 @@ class ASREnvelope:
                         self.level[i] = max(v, self.level[i] - rstep)
                     output[0, i] = round(self.level[i])
 
-                self.asredest.send(output.tobytes())
+                self.asr_jack.send(output.tobytes())
                 t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 

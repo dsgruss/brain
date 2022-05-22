@@ -7,6 +7,8 @@ from brain import module
 
 import logging
 
+from examples.common import tkJack
+
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
@@ -15,18 +17,18 @@ class Oscillator:
     grid_size = (4, 10)
     grid_pos = (8, 0)
 
-    def __init__(self, loop):
+    def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
-
-        self.ui_setup()
-        loop.create_task(self.ui_task())
 
         self.mod = module.Module(self.name, self.patching_callback)
 
-        self.notedest = self.mod.add_input("Note In", self.data_callback)
-        self.outdest = self.mod.add_output(name="Output")
+        self.note_jack = self.mod.add_input("Note In", self.data_callback)
+        self.out_jack = self.mod.add_output(name="Output")
 
         self.note = [69 * 256] * self.mod.channels
+
+        self.ui_setup()
+        loop.create_task(self.ui_task())
 
         loop.create_task(self.output_task())
 
@@ -42,23 +44,8 @@ class Oscillator:
 
         self.root.title(self.name)
 
-        self.cbnoteval = tk.BooleanVar()
-        self.cboutval = tk.BooleanVar()
-
-        self.cbnote = tk.Checkbutton(
-            self.root,
-            text="Note In",
-            variable=self.cbnoteval,
-            command=self.note_check_handler,
-        )
-        self.cbnote.place(x=10, y=50)
-        self.cbout = tk.Checkbutton(
-            self.root,
-            text="Output",
-            variable=self.cboutval,
-            command=self.out_check_handler,
-        )
-        self.cbout.place(x=10, y=130)
+        tkJack(self.root, self.note_jack, "Note In").place(x=10, y=50)
+        tkJack(self.root, self.out_jack, "Output").place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -82,12 +69,6 @@ class Oscillator:
             except tk.TclError:
                 self.shutdown()
                 break
-
-    def note_check_handler(self):
-        self.notedest.set_patch_enabled(self.cbnoteval.get())
-
-    def out_check_handler(self):
-        self.outdest.set_patch_enabled(self.cboutval.get())
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -126,7 +107,7 @@ class Oscillator:
                         if wavetable_pos[i] >= wavetable_size:
                             wavetable_pos[i] -= wavetable_size
 
-                self.outdest.send(output.tobytes())
+                self.out_jack.send(output.tobytes())
                 t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 
