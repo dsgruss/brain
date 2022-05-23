@@ -22,7 +22,7 @@ class Oscilloscope:
     name = "Oscilloscope"
     time_div = 4.0  # sec
     grid_size = (8, 9)
-    grid_pos = (16, 0)
+    grid_pos = (20, 0)
 
     def __init__(self, loop):
         self.loop = loop
