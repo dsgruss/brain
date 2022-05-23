@@ -16,7 +16,7 @@ class Oscillator:
     name = "Oscillator"
     color = 120  # hue
 
-    grid_size = (4, 10)
+    grid_size = (4, 9)
     grid_pos = (8, 0)
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
@@ -40,10 +40,10 @@ class Oscillator:
 
     def ui_setup(self):
         self.root = tk.Tk()
-        w = self.grid_size[0] * 50
+        w = self.grid_size[0] * 50 - 10
         h = self.grid_size[1] * 50
-        x = self.grid_pos[0] * 50 + 50
-        y = self.grid_pos[1] * 50 + 50
+        x = self.grid_pos[0] * 50 + 10 + 5
+        y = self.grid_pos[1] * 50 + 10
         self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
@@ -54,11 +54,6 @@ class Oscillator:
         self.out_tkjack.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
-
-        self.statusbar = tk.Label(
-            self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
-        )
-        self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def data_callback(self, data):
         result = np.frombuffer(data, dtype=self.mod.sample_type)
@@ -90,7 +85,6 @@ class Oscillator:
         self.loop.stop()
 
     def patching_callback(self, state):
-        self.statusbar.config(text=str(state))
         for jack in [self.note_tkjack, self.out_tkjack]:
             if state == module.PatchState.PATCH_TOGGLED:
                 jack.set_color(77, 100, 100)

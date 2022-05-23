@@ -29,7 +29,7 @@ class MidiToCV:
     name = "Midi to CV converter"
     color = 280  # hue
 
-    grid_size = (4, 10)
+    grid_size = (4, 9)
     grid_pos = (0, 0)
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
@@ -60,10 +60,10 @@ class MidiToCV:
 
     def ui_setup(self):
         self.root = tk.Tk()
-        w = self.grid_size[0] * 50
+        w = self.grid_size[0] * 50 - 10
         h = self.grid_size[1] * 50
-        x = self.grid_pos[0] * 50 + 50
-        y = self.grid_pos[1] * 50 + 50
+        x = self.grid_pos[0] * 50 + 10 + 5
+        y = self.grid_pos[1] * 50 + 10
         self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
@@ -74,11 +74,6 @@ class MidiToCV:
         self.gate_tkjack.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
-
-        self.statusbar = tk.Label(
-            self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
-        )
-        self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -104,7 +99,6 @@ class MidiToCV:
         self.loop.stop()
 
     def patching_callback(self, state):
-        self.statusbar.config(text=str(state))
         for jack in [self.note_tkjack, self.gate_tkjack]:
             if state == module.PatchState.PATCH_TOGGLED:
                 jack.set_color(77, 100, 100)

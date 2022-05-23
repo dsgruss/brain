@@ -1,10 +1,7 @@
 import asyncio
-import numpy as np
 import tkinter as tk
-import time
 
 from brain import module
-from common import tkJack
 
 import logging
 
@@ -14,8 +11,8 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 class Manager:
     name = "Global State Control"
 
-    grid_size = (4, 10)
-    grid_pos = (0, 10)
+    grid_size = (4, 9)
+    grid_pos = (0, 9)
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
@@ -31,18 +28,18 @@ class Manager:
 
     def ui_setup(self):
         self.root = tk.Tk()
-        w = self.grid_size[0] * 50
+        w = self.grid_size[0] * 50 - 10
         h = self.grid_size[1] * 50
-        x = self.grid_pos[0] * 50 + 50
+        x = self.grid_pos[0] * 50 + 10 + 5
         y = self.grid_pos[1] * 50 + 50
         self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
-        tk.Button(self.root, text="Close All", command=self.mod.abort_all).place(
-            x=10, y=170
-        )
+        tk.Button(
+            self.root, text="🔌    Close All", command=self.mod.abort_all, width=24
+        ).place(x=10, y=170)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
