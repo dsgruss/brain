@@ -27,7 +27,10 @@ class Oscillator:
         )
 
         self.note_jack = self.mod.add_input("Note In", self.data_callback)
-        self.out_jack = self.mod.add_output("Output", self.color)
+        self.sin_jack = self.mod.add_output("Sin", self.color)
+        self.tri_jack = self.mod.add_output("Tri", self.color)
+        self.saw_jack = self.mod.add_output("Saw", self.color)
+        self.sqr_jack = self.mod.add_output("Sqr", self.color)
 
         self.note = [69 * 256] * self.mod.channels
 
@@ -50,8 +53,14 @@ class Oscillator:
 
         self.note_tkjack = tkJack(self.root, self.note_jack, "Note In")
         self.note_tkjack.place(x=10, y=50)
-        self.out_tkjack = tkJack(self.root, self.out_jack, "Output")
-        self.out_tkjack.place(x=10, y=130)
+        self.sin_tkjack = tkJack(self.root, self.sin_jack, "Sin")
+        self.sin_tkjack.place(x=10, y=130)
+        self.tri_tkjack = tkJack(self.root, self.tri_jack, "Tri")
+        self.tri_tkjack.place(x=10, y=170)
+        self.saw_tkjack = tkJack(self.root, self.saw_jack, "Saw")
+        self.saw_tkjack.place(x=10, y=210)
+        self.sqr_tkjack = tkJack(self.root, self.sqr_jack, "Sqr")
+        self.sqr_tkjack.place(x=10, y=250)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
@@ -65,7 +74,10 @@ class Oscillator:
         while True:
             try:
                 if self.mod.patch_state == module.PatchState.IDLE:
-                    self.out_tkjack.set_color(self.color, 100, 100)
+                    self.sin_tkjack.set_color(self.color, 100, 100)
+                    self.tri_tkjack.set_color(self.color, 100, 100)
+                    self.saw_tkjack.set_color(self.color, 100, 100)
+                    self.sqr_tkjack.set_color(self.color, 100, 100)
                     if self.note_jack.is_patched():
                         self.note_tkjack.set_color(self.note_jack.color, 100, 100)
                     else:
@@ -85,7 +97,13 @@ class Oscillator:
         self.loop.stop()
 
     def patching_callback(self, state):
-        for jack in [self.note_tkjack, self.out_tkjack]:
+        for jack in [
+            self.note_tkjack,
+            self.sin_tkjack,
+            self.tri_tkjack,
+            self.saw_tkjack,
+            self.sqr_tkjack,
+        ]:
             if state == module.PatchState.PATCH_TOGGLED:
                 jack.set_color(77, 100, 100)
             elif state == module.PatchState.PATCH_ENABLED:
@@ -96,17 +114,49 @@ class Oscillator:
     async def output_task(self):
         t = time.perf_counter()
         block_size = round(self.mod.sample_rate / self.mod.packet_rate)  # samples
-        output = np.zeros((block_size, self.mod.channels), dtype=self.mod.sample_type)
+        sin_output = np.zeros(
+            (block_size, self.mod.channels), dtype=self.mod.sample_type
+        )
+        tri_output = np.zeros(
+            (block_size, self.mod.channels), dtype=self.mod.sample_type
+        )
+        saw_output = np.zeros(
+            (block_size, self.mod.channels), dtype=self.mod.sample_type
+        )
+        sqr_output = np.zeros(
+            (block_size, self.mod.channels), dtype=self.mod.sample_type
+        )
 
         wavetable_size = 2048  # samples
-        wavetable = np.array(
+        wavetable_pos = [0] * self.mod.channels
+
+        a = 8000  # amplitude zero-to-peak
+        sin_wavetable = np.array(
             [
-                round(8000 * np.sin(2 * np.pi * i / wavetable_size))
+                round(a * np.sin(2 * np.pi * i / wavetable_size))
                 for i in range(wavetable_size)
             ],
             dtype=self.mod.sample_type,
         )
-        wavetable_pos = [0] * self.mod.channels
+        tri_wavetable = np.array(
+            [
+                round(-a + 2 * a * i / (wavetable_size // 2))
+                for i in range(wavetable_size // 2)
+            ]
+            + [
+                round(a - 2 * a * (i - wavetable_size // 2) / (wavetable_size // 2))
+                for i in range(wavetable_size // 2, wavetable_size)
+            ],
+            dtype=self.mod.sample_type,
+        )
+        saw_wavetable = np.array(
+            [round(-a + 2 * a * i / wavetable_size) for i in range(wavetable_size)],
+            dtype=self.mod.sample_type,
+        )
+        sqr_wavetable = np.array(
+            [a if i < wavetable_size // 2 else -a for i in range(wavetable_size)],
+            dtype=self.mod.sample_type,
+        )
 
         while True:
             dt = time.perf_counter() - t
@@ -114,12 +164,18 @@ class Oscillator:
                 for i, v in enumerate(self.note):
                     f = 440 * 2 ** ((v / 256 - 69) / 12)
                     for j in range(block_size):
-                        output[j, i] = wavetable[int(wavetable_pos[i])]
+                        sin_output[j, i] = sin_wavetable[int(wavetable_pos[i])]
+                        tri_output[j, i] = tri_wavetable[int(wavetable_pos[i])]
+                        saw_output[j, i] = saw_wavetable[int(wavetable_pos[i])]
+                        sqr_output[j, i] = sqr_wavetable[int(wavetable_pos[i])]
                         wavetable_pos[i] += f / self.mod.sample_rate * wavetable_size
                         if wavetable_pos[i] >= wavetable_size:
                             wavetable_pos[i] -= wavetable_size
 
-                self.out_jack.send(output.tobytes())
+                self.sin_jack.send(sin_output.tobytes())
+                self.tri_jack.send(tri_output.tobytes())
+                self.saw_jack.send(saw_output.tobytes())
+                self.sqr_jack.send(sqr_output.tobytes())
                 t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 
