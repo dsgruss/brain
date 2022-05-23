@@ -12,9 +12,12 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
 class ASREnvelope:
-    atime = 1  # sec
+    atime = 0.25  # sec
     rtime = 2  # sec
+
     name = "ASR Envelope Generator"
+    color = 60  # hue
+
     grid_size = (4, 10)
     grid_pos = (4, 0)
 
@@ -24,7 +27,7 @@ class ASREnvelope:
         self.mod = module.Module(self.name, self.patching_callback)
 
         self.gate_jack = self.mod.add_input("Gate In", self.data_callback)
-        self.asr_jack = self.mod.add_output("ASR Envelope")
+        self.asr_jack = self.mod.add_output("ASR Envelope", self.color)
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -46,8 +49,10 @@ class ASREnvelope:
 
         self.root.title(self.name)
 
-        tkJack(self.root, self.gate_jack, "Gate In").place(x=10, y=50)
-        tkJack(self.root, self.asr_jack, "ASR Envelope").place(x=10, y=130)
+        self.gate_tkjack = tkJack(self.root, self.gate_jack, "Gate In")
+        self.gate_tkjack.place(x=10, y=50)
+        self.asr_tkjack = tkJack(self.root, self.asr_jack, "ASR Envelope")
+        self.asr_tkjack.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -66,6 +71,12 @@ class ASREnvelope:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
+                if self.mod.patch_state == module.PatchState.IDLE:
+                    if self.gate_jack.is_patched():
+                        self.gate_tkjack.set_color(self.gate_jack.color, 100, min(max(self.gates) / 16000 * 100, 100))
+                    else:
+                        self.gate_tkjack.set_color(0, 0, 0)
+                    self.asr_tkjack.set_color(self.color, 100, min(max(self.level) / 16000 * 100, 100))
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -82,6 +93,13 @@ class ASREnvelope:
 
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
+        for jack in [self.gate_tkjack, self.asr_tkjack]:
+            if state == module.PatchState.PATCH_TOGGLED:
+                jack.set_color(77, 100, 100)
+            elif state == module.PatchState.PATCH_ENABLED:
+                jack.set_color(0, 0, 50)
+            elif state == module.PatchState.BLOCKED:
+                jack.set_color(0, 100, 100)
 
     async def output_task(self):
         t = time.perf_counter()

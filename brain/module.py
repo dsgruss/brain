@@ -57,9 +57,10 @@ class InputJack(Jack):
             self.sock.close()
             self.patched = False
 
-    def connect(self, address, port):
+    def connect(self, address, port, color):
         if self.is_patched():
             self.clear()
+        self.color = color
 
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
@@ -96,8 +97,8 @@ class InputJack(Jack):
 
 
 class OutputJack(Jack):
-    def __init__(self, parent_module, address, name):
-
+    def __init__(self, parent_module, address, name, color):
+        self.color = color
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
         # For now we just pick a port, but this should be negotiated during device discovery
@@ -210,9 +211,9 @@ class Module:
         self.inputs.append(jack)
         return jack
 
-    def add_output(self, name="") -> OutputJack:
+    def add_output(self, name="", color=180) -> OutputJack:
         # Adds a new output to the module
-        jack = OutputJack(self, self.broadcast_addr["broadcast"], name)
+        jack = OutputJack(self, self.broadcast_addr["broadcast"], name, color)
         self.outputs.append(jack)
         return jack
 
@@ -229,6 +230,7 @@ class Module:
                 "type": "output",
                 "address": jack.endpoint[0],
                 "port": jack.endpoint[1],
+                "color": jack.color
             }
             for jack in self.outputs
             if jack.patch_enabled
@@ -254,7 +256,7 @@ class Module:
 
     def make_connection(self, input, output):
         input_jack = [jack for jack in self.inputs if jack.id == input["id"]][0]
-        input_jack.connect(self.broadcast_addr["addr"], output["port"])
+        input_jack.connect(self.broadcast_addr["addr"], output["port"], output["color"])
 
     def check_process(self):
         if self.process_callback is None:
