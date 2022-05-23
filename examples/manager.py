@@ -38,7 +38,7 @@ class Manager:
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(
-            self.root, text="🔌    Close All", command=self.mod.abort_all, width=24
+            self.root, text="🔌    Close All", command=self.mod.abort_all, width=22
         ).place(x=10, y=170)
 
         self.statusbar = tk.Label(

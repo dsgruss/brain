@@ -90,11 +90,7 @@ class InputJack(Jack):
         if len(self.data_queue) > 0:
             return self.data_queue.pop()
         else:
-            return np.zeros(
-                (self.parent_module.block_size, self.parent_module.channels),
-                dtype=self.parent_module.sample_type,
-            )
-
+            return self.last_seen_data.copy()
 
 class OutputJack(Jack):
     def __init__(self, parent_module, address, name, color):
