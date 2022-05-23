@@ -73,10 +73,16 @@ class ASREnvelope:
             try:
                 if self.mod.patch_state == module.PatchState.IDLE:
                     if self.gate_jack.is_patched():
-                        self.gate_tkjack.set_color(self.gate_jack.color, 100, min(max(self.gates) / 16000 * 100, 100))
+                        self.gate_tkjack.set_color(
+                            self.gate_jack.color,
+                            100,
+                            min(max(self.gates) / 16000 * 100, 100),
+                        )
                     else:
                         self.gate_tkjack.set_color(0, 0, 0)
-                    self.asr_tkjack.set_color(self.color, 100, min(max(self.level) / 16000 * 100, 100))
+                    self.asr_tkjack.set_color(
+                        self.color, 100, min(max(self.level) / 16000 * 100, 100)
+                    )
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:

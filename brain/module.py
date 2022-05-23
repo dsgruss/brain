@@ -230,7 +230,7 @@ class Module:
                 "type": "output",
                 "address": jack.endpoint[0],
                 "port": jack.endpoint[1],
-                "color": jack.color
+                "color": jack.color,
             }
             for jack in self.outputs
             if jack.patch_enabled
