@@ -25,9 +25,13 @@ class MidiToCV:
     """Module to convert a midi stream to control voltages"""
 
     timestamp = 0
+
     name = "Midi to CV converter"
+    color = 280   # hue
+
     grid_size = (4, 10)
     grid_pos = (0, 0)
+
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
@@ -40,12 +44,12 @@ class MidiToCV:
 
         self.voices = [Voice(0, False, 0) for _ in range(self.mod.channels)]
 
-        self.note_jack = self.mod.add_output(name="Note")
-        self.gate_jack = self.mod.add_output(name="Gate")
-        self.velo_jack = self.mod.add_output(name="Velocity")
-        self.lift_jack = self.mod.add_output(name="Lift")
-        self.piwh_jack = self.mod.add_output(name="Pitch Wheel")
-        self.mdwh_jack = self.mod.add_output(name="Mod Wheel")
+        self.note_jack = self.mod.add_output(name="Note", color=self.color)
+        self.gate_jack = self.mod.add_output(name="Gate", color=self.color)
+        self.velo_jack = self.mod.add_output(name="Velocity", color=self.color)
+        self.lift_jack = self.mod.add_output(name="Lift", color=self.color)
+        self.piwh_jack = self.mod.add_output(name="Pitch Wheel", color=self.color)
+        self.mdwh_jack = self.mod.add_output(name="Mod Wheel", color=self.color)
 
         self.ui_setup()
         self.loop.create_task(self.ui_task())
@@ -63,8 +67,10 @@ class MidiToCV:
 
         self.root.title(self.name)
 
-        tkJack(self.root, self.note_jack, "Note").place(x=10, y=50)
-        tkJack(self.root, self.gate_jack, "Gate").place(x=10, y=90)
+        self.note_tkjack = tkJack(self.root, self.note_jack, "Note")
+        self.note_tkjack.place(x=10, y=50)
+        self.gate_tkjack = tkJack(self.root, self.gate_jack, "Gate")
+        self.gate_tkjack.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -77,6 +83,12 @@ class MidiToCV:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
+                if self.mod.patch_state == module.PatchState.IDLE:
+                    self.note_tkjack.set_color(self.color, 100, 100)
+                    if any(v.on for v in self.voices):
+                        self.gate_tkjack.set_color(self.color, 100, 100)
+                    else:
+                        self.gate_tkjack.set_color(0, 0, 0)
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -93,6 +105,13 @@ class MidiToCV:
 
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
+        for jack in [self.note_tkjack, self.gate_tkjack]:
+            if state == module.PatchState.PATCH_TOGGLED:
+                jack.set_color(77, 100, 100)
+            elif state == module.PatchState.PATCH_ENABLED:
+                jack.set_color(0, 0, 50)
+            elif state == module.PatchState.BLOCKED:
+                jack.set_color(0, 100, 100)
 
     async def midi_task(self, port, interval=(1 / 60)):
         while True:

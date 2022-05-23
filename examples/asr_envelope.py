@@ -16,7 +16,7 @@ class ASREnvelope:
     rtime = 2  # sec
 
     name = "ASR Envelope Generator"
-    color = 60  # hue
+    color = 235  # hue
 
     grid_size = (4, 10)
     grid_pos = (4, 0)

@@ -46,6 +46,8 @@ class OverwriteBuffer:
 
 class AudioInterface:
     name = "Audio Interface"
+    color = 240  # hue
+
     grid_size = (4, 10)
     grid_pos = (12, 0)
 
@@ -67,6 +69,8 @@ class AudioInterface:
         )
         self.in_jack = self.mod.add_input("Audio In")
         self.level_jack = self.mod.add_input("Level")
+
+        self.level_value = 0
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -96,8 +100,10 @@ class AudioInterface:
 
         self.root.title(self.name)
 
-        tkJack(self.root, self.in_jack, "Audio In").place(x=10, y=50)
-        tkJack(self.root, self.level_jack, "Level").place(x=10, y=90)
+        self.in_tkjack = tkJack(self.root, self.in_jack, "Audio In")
+        self.in_tkjack.place(x=10, y=50)
+        self.level_tkjack = tkJack(self.root, self.level_jack, "Level")
+        self.level_tkjack.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -114,6 +120,15 @@ class AudioInterface:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
+                if self.mod.patch_state == module.PatchState.IDLE:
+                    if self.in_jack.is_patched():
+                        self.in_tkjack.set_color(self.in_jack.color, 100, 100)
+                    else:
+                        self.in_tkjack.set_color(0, 0, 0)
+                    if self.level_jack.is_patched():
+                        self.level_tkjack.set_color(self.level_jack.color, 100, self.level_value)
+                    else:
+                        self.level_tkjack.set_color(0, 0, 0)
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -130,6 +145,13 @@ class AudioInterface:
 
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
+        for jack in [self.in_tkjack, self.level_tkjack]:
+            if state == module.PatchState.PATCH_TOGGLED:
+                jack.set_color(77, 100, 100)
+            elif state == module.PatchState.PATCH_ENABLED:
+                jack.set_color(0, 0, 50)
+            elif state == module.PatchState.BLOCKED:
+                jack.set_color(0, 100, 100)
 
     def audio_callback(self, outdata, frames, time, status):
         try:
@@ -139,6 +161,7 @@ class AudioInterface:
             outdata[:] = np.zeros((self.block_size, 1))
             for i in range(self.mod.channels):
                 outdata[:, 0] += (data[:, i] * (level[0, i] / (4 * 16000))).astype(int)
+            self.level_value = min(max(level[0, :]) / 16000 * 100, 100)
         except Empty:
             outdata[:] = np.zeros((self.block_size, 1))
 

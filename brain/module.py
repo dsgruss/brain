@@ -205,13 +205,13 @@ class Module:
             loop.create_datagram_endpoint(lambda: self.protocol, sock=self.sock)
         )
 
-    def add_input(self, name="", data_callback=None) -> InputJack:
+    def add_input(self, name, data_callback=None) -> InputJack:
         # Adds a new input to the module
         jack = InputJack(self, data_callback, name)
         self.inputs.append(jack)
         return jack
 
-    def add_output(self, name="", color=180) -> OutputJack:
+    def add_output(self, name, color) -> OutputJack:
         # Adds a new output to the module
         jack = OutputJack(self, self.broadcast_addr["broadcast"], name, color)
         self.outputs.append(jack)

@@ -62,7 +62,8 @@ class Oscilloscope:
 
         self.root.title(self.name)
 
-        tkJack(self.root, self.data_jack, "Data").place(x=10, y=430)
+        self.data_tkjack = tkJack(self.root, self.data_jack, "Data")
+        self.data_tkjack.place(x=10, y=430)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
@@ -93,22 +94,31 @@ class Oscilloscope:
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
-            for i in range(self.mod.channels):
-                while (
-                    len(self.timeseries[i]) >= 2
-                    and self.timeseries[i][-1] - self.timeseries[i][0] > self.time_div
-                ):
-                    self.timeseries[i].pop(0)
-                    self.dataseries[i].pop(0)
+            try:
+                if self.mod.patch_state == module.PatchState.IDLE:
+                    if self.data_jack.is_patched():
+                        self.data_tkjack.set_color(self.data_jack.color, 100, 100)
+                    else:
+                        self.data_tkjack.set_color(0, 0, 0)
+                for i in range(self.mod.channels):
+                    while (
+                        len(self.timeseries[i]) >= 2
+                        and self.timeseries[i][-1] - self.timeseries[i][0] > self.time_div
+                    ):
+                        self.timeseries[i].pop(0)
+                        self.dataseries[i].pop(0)
 
-            for i, line in enumerate(self.plot_lines):
-                line.set_data(
-                    [ts - self.timeseries[i][0] for ts in self.timeseries[i]],
-                    self.dataseries[i],
-                )
-            self.fig_canvas.draw()
-            self.root.update()
-            await asyncio.sleep(interval)
+                for i, line in enumerate(self.plot_lines):
+                    line.set_data(
+                        [ts - self.timeseries[i][0] for ts in self.timeseries[i]],
+                        self.dataseries[i],
+                    )
+                self.fig_canvas.draw()
+                self.root.update()
+                await asyncio.sleep(interval)
+            except tk.TclError:
+                self.shutdown()
+                break
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -120,6 +130,12 @@ class Oscilloscope:
 
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
+        if state == module.PatchState.PATCH_TOGGLED:
+            self.data_tkjack.set_color(77, 100, 100)
+        elif state == module.PatchState.PATCH_ENABLED:
+            self.data_tkjack.set_color(0, 0, 50)
+        elif state == module.PatchState.BLOCKED:
+            self.data_tkjack.set_color(0, 100, 100)
 
     async def random_square_wave(self):
         while True:

@@ -14,6 +14,8 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 class Oscillator:
     name = "Oscillator"
+    color = 120  # hue
+
     grid_size = (4, 10)
     grid_pos = (8, 0)
 
@@ -23,7 +25,7 @@ class Oscillator:
         self.mod = module.Module(self.name, self.patching_callback)
 
         self.note_jack = self.mod.add_input("Note In", self.data_callback)
-        self.out_jack = self.mod.add_output(name="Output")
+        self.out_jack = self.mod.add_output("Output", self.color)
 
         self.note = [69 * 256] * self.mod.channels
 
@@ -44,8 +46,10 @@ class Oscillator:
 
         self.root.title(self.name)
 
-        tkJack(self.root, self.note_jack, "Note In").place(x=10, y=50)
-        tkJack(self.root, self.out_jack, "Output").place(x=10, y=130)
+        self.note_tkjack = tkJack(self.root, self.note_jack, "Note In")
+        self.note_tkjack.place(x=10, y=50)
+        self.out_tkjack = tkJack(self.root, self.out_jack, "Output")
+        self.out_tkjack.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
@@ -64,6 +68,12 @@ class Oscillator:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
+                if self.mod.patch_state == module.PatchState.IDLE:
+                    self.out_tkjack.set_color(self.color, 100, 100)
+                    if self.note_jack.is_patched():
+                        self.note_tkjack.set_color(self.note_jack.color, 100, 100)
+                    else:
+                        self.note_tkjack.set_color(0, 0, 0)
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -80,6 +90,13 @@ class Oscillator:
 
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
+        for jack in [self.note_tkjack, self.out_tkjack]:
+            if state == module.PatchState.PATCH_TOGGLED:
+                jack.set_color(77, 100, 100)
+            elif state == module.PatchState.PATCH_ENABLED:
+                jack.set_color(0, 0, 50)
+            elif state == module.PatchState.BLOCKED:
+                jack.set_color(0, 100, 100)
 
     async def output_task(self):
         t = time.perf_counter()
