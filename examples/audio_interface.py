@@ -65,7 +65,10 @@ class AudioInterface:
         logging.info("Using device " + sd.query_devices(default_device)["name"])
 
         self.mod = module.Module(
-            self.name, self.patching_callback, process_callback=self.data_callback
+            self.name,
+            self.patching_callback,
+            process_callback=self.data_callback,
+            abort_callback=self.shutdown,
         )
         self.in_jack = self.mod.add_input("Audio In")
         self.level_jack = self.mod.add_input("Level")
@@ -106,7 +109,6 @@ class AudioInterface:
         self.level_tkjack.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
-        tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W

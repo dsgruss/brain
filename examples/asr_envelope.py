@@ -24,7 +24,9 @@ class ASREnvelope:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = module.Module(self.name, self.patching_callback)
+        self.mod = module.Module(
+            self.name, self.patching_callback, abort_callback=self.shutdown
+        )
 
         self.gate_jack = self.mod.add_input("Gate In", self.data_callback)
         self.asr_jack = self.mod.add_output("ASR Envelope", self.color)
@@ -55,7 +57,6 @@ class ASREnvelope:
         self.asr_tkjack.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
-        tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W

@@ -3,3 +3,4 @@ asr_envelope: python examples/asr_envelope.py
 oscillator: python examples/oscillator.py
 audio_interface: python examples/audio_interface.py
 oscilloscope: python examples/oscilloscope.py
+manager: python examples/manager.py

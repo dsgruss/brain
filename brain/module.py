@@ -129,6 +129,10 @@ class Module:
     :param name: the name of the module
 
     :param patching_callback: function called when the global patch state changes
+
+    :param process_callback: function called for the syncronized processing step
+
+    :param abort_callback: function called for a global shutdown event
     """
 
     # Preferred communication subnet in case multiple network interfaces are present
@@ -155,7 +159,13 @@ class Module:
     # Sample data type
     sample_type = np.int16
 
-    def __init__(self, name: str, patching_callback=None, process_callback=None):
+    def __init__(
+        self,
+        name: str,
+        patching_callback=None,
+        process_callback=None,
+        abort_callback=None,
+    ):
         self.name = name
         self.patching_callback = patching_callback
         self.process_callback = process_callback
@@ -194,6 +204,7 @@ class Module:
             self.broadcast_addr["broadcast"],
             self.patch_port,
             self.update_patch_state,
+            abort_callback,
         )
 
     def start(self):
@@ -236,6 +247,9 @@ class Module:
             if jack.patch_enabled
         ]
         self.protocol.update(s)
+
+    def abort_all(self):
+        self.protocol.abort_all()
 
     def update_patch_state(self, patch_state, global_states):
         if self.patch_state != patch_state:
@@ -289,11 +303,14 @@ class DataProtocol(asyncio.DatagramProtocol):
 
 
 class PatchProtocol(asyncio.DatagramProtocol):
-    def __init__(self, uuid, broadcast_addr, port, state_callback) -> None:
+    def __init__(
+        self, uuid, broadcast_addr, port, state_callback, abort_callback
+    ) -> None:
         self.uuid = uuid
         self.broadcast_addr = broadcast_addr
         self.port = port
         self.state_callback = state_callback
+        self.abort_callback = abort_callback
 
         self.states = {uuid: []}
 
@@ -317,6 +334,9 @@ class PatchProtocol(asyncio.DatagramProtocol):
             {"message": "UPDATE", "uuid": self.uuid, "state": local_state}
         )
         self.push_update()
+
+    def abort_all(self):
+        self.datagram_send({"message": "ABORT", "uuid": "GLOBAL"})
 
     def push_update(self):
         all_states = []
@@ -343,11 +363,15 @@ class PatchProtocol(asyncio.DatagramProtocol):
             response = json.loads(data)
         except json.JSONDecodeError:
             return
-        if any(k not in response for k in ("message", "uuid", "state")):
+        if any(k not in response for k in ("message", "uuid")):
             return
         if response["uuid"] == self.uuid:
             return
 
+        logging.info("<= " + str(response))
         if response["message"] == "UPDATE":
             self.states[response["uuid"]] = response["state"]
             self.push_update()
+        if response["message"] == "ABORT":
+            if self.abort_callback is not None:
+                self.abort_callback()

@@ -27,7 +27,9 @@ class Oscilloscope:
     def __init__(self, loop):
         self.loop = loop
 
-        self.mod = module.Module(self.name, self.patching_callback)
+        self.mod = module.Module(
+            self.name, self.patching_callback, abort_callback=self.shutdown
+        )
         self.data_jack = self.mod.add_input("Data", self.data_callback)
 
         self.ui_setup()
@@ -69,8 +71,6 @@ class Oscilloscope:
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
         )
         self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
-
-        tk.Button(self.root, text="Quit", command=self.shutdown).place(x=250, y=430)
 
         dpi = 80
         size = (380 / dpi, 350 / dpi)

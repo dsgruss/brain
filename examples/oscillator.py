@@ -22,7 +22,9 @@ class Oscillator:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = module.Module(self.name, self.patching_callback)
+        self.mod = module.Module(
+            self.name, self.patching_callback, abort_callback=self.shutdown
+        )
 
         self.note_jack = self.mod.add_input("Note In", self.data_callback)
         self.out_jack = self.mod.add_output("Output", self.color)
@@ -52,7 +54,6 @@ class Oscillator:
         self.out_tkjack.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
-        tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W

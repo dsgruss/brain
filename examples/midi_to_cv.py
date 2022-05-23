@@ -39,7 +39,9 @@ class MidiToCV:
         for inp in mido.get_input_names():
             self.loop.create_task(self.midi_task(mido.open_input(inp)))
 
-        self.mod = module.Module(self.name, self.patching_callback)
+        self.mod = module.Module(
+            self.name, self.patching_callback, abort_callback=self.shutdown
+        )
 
         self.voices = [Voice(0, False, 0) for _ in range(self.mod.channels)]
 
@@ -72,7 +74,6 @@ class MidiToCV:
         self.gate_tkjack.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
-        tk.Button(self.root, text="Quit", command=self.shutdown).place(x=10, y=170)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
