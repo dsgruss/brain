@@ -10,7 +10,6 @@ import uuid
 
 from collections import deque
 from enum import Enum
-from typing import Callable
 
 
 class Jack:
@@ -155,16 +154,16 @@ class Module:
     # Sample data type
     sample_type = np.int16
 
-    inputs = []
-    outputs = []
-    broadcast_addr = None
-
     def __init__(self, name: str, patching_callback=None, process_callback=None):
         self.name = name
         self.patching_callback = patching_callback
         self.process_callback = process_callback
         self.uuid = str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
+
+        self.inputs = []
+        self.outputs = []
+        self.broadcast_addr = None
 
         addresses = []
         for interface in netifaces.interfaces():
@@ -288,16 +287,13 @@ class DataProtocol(asyncio.DatagramProtocol):
 
 
 class PatchProtocol(asyncio.DatagramProtocol):
-
-    states = {}
-
     def __init__(self, uuid, broadcast_addr, port, state_callback) -> None:
         self.uuid = uuid
         self.broadcast_addr = broadcast_addr
         self.port = port
         self.state_callback = state_callback
 
-        self.states[uuid] = []
+        self.states = {uuid: []}
 
         super().__init__()
 
