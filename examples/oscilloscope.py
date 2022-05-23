@@ -103,7 +103,8 @@ class Oscilloscope:
                 for i in range(self.mod.channels):
                     while (
                         len(self.timeseries[i]) >= 2
-                        and self.timeseries[i][-1] - self.timeseries[i][0] > self.time_div
+                        and self.timeseries[i][-1] - self.timeseries[i][0]
+                        > self.time_div
                     ):
                         self.timeseries[i].pop(0)
                         self.dataseries[i].pop(0)

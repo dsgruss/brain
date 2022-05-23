@@ -27,11 +27,10 @@ class MidiToCV:
     timestamp = 0
 
     name = "Midi to CV converter"
-    color = 280   # hue
+    color = 280  # hue
 
     grid_size = (4, 10)
     grid_pos = (0, 0)
-
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop

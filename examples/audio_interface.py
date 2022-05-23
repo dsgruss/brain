@@ -126,7 +126,9 @@ class AudioInterface:
                     else:
                         self.in_tkjack.set_color(0, 0, 0)
                     if self.level_jack.is_patched():
-                        self.level_tkjack.set_color(self.level_jack.color, 100, self.level_value)
+                        self.level_tkjack.set_color(
+                            self.level_jack.color, 100, self.level_value
+                        )
                     else:
                         self.level_tkjack.set_color(0, 0, 0)
                 self.root.update()
