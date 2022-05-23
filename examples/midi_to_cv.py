@@ -156,7 +156,7 @@ class MidiToCV:
                 t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 
-            await asyncio.sleep(0)
+            await asyncio.sleep(1 / self.mod.packet_rate)
 
 
 if __name__ == "__main__":
