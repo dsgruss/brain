@@ -6,7 +6,7 @@ import threading
 
 from collections import deque
 
-from brain import module
+from brain import Module, PatchState
 from common import tkJack
 
 import logging
@@ -64,7 +64,7 @@ class AudioInterface:
 
         logging.info("Using device " + sd.query_devices(default_device)["name"])
 
-        self.mod = module.Module(
+        self.mod = Module(
             self.name,
             self.patching_callback,
             process_callback=self.data_callback,
@@ -78,15 +78,14 @@ class AudioInterface:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.audio_buffer = OverwriteBuffer(self.mod.buffer_size)
-        self.level_buffer = OverwriteBuffer(self.mod.buffer_size)
-        self.block_size = round(self.mod.sample_rate / self.mod.packet_rate)
+        self.audio_buffer = OverwriteBuffer(Module.buffer_size)
+        self.level_buffer = OverwriteBuffer(Module.buffer_size)
         s = sd.OutputStream(
             device=default_device,
-            samplerate=self.mod.sample_rate,
+            samplerate=Module.sample_rate,
             channels=1,
-            dtype=self.mod.sample_type,
-            blocksize=self.block_size,
+            dtype=Module.sample_type,
+            blocksize=Module.block_size,
             callback=self.audio_callback,
         )
 
@@ -117,7 +116,7 @@ class AudioInterface:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == module.PatchState.IDLE:
+                if self.mod.patch_state == PatchState.IDLE:
                     if self.in_jack.is_patched():
                         self.in_tkjack.set_color(self.in_jack.color, 100, 100)
                     else:
@@ -144,11 +143,11 @@ class AudioInterface:
 
     def patching_callback(self, state):
         for jack in [self.in_tkjack, self.level_tkjack]:
-            if state == module.PatchState.PATCH_TOGGLED:
+            if state == PatchState.PATCH_TOGGLED:
                 jack.set_color(77, 100, 100)
-            elif state == module.PatchState.PATCH_ENABLED:
+            elif state == PatchState.PATCH_ENABLED:
                 jack.set_color(0, 0, 50)
-            elif state == module.PatchState.BLOCKED:
+            elif state == PatchState.BLOCKED:
                 jack.set_color(0, 100, 100)
 
     def audio_callback(self, outdata, frames, time, status):
@@ -156,12 +155,12 @@ class AudioInterface:
             data = self.audio_buffer.get()
             level = self.level_buffer.get()
 
-            outdata[:] = np.zeros((self.block_size, 1))
-            for i in range(self.mod.channels):
+            outdata[:] = np.zeros((Module.block_size, 1))
+            for i in range(Module.channels):
                 outdata[:, 0] += (data[:, i] * (level[0, i] / (4 * 16000))).astype(int)
             self.level_value = min(max(level[0, :]) / 16000 * 100, 100)
         except Empty:
-            outdata[:] = np.zeros((self.block_size, 1))
+            outdata[:] = np.zeros((Module.block_size, 1))
 
 
 if __name__ == "__main__":

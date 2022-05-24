@@ -6,7 +6,7 @@ import tkinter as tk
 
 from dataclasses import dataclass
 
-from brain import module
+from brain import Module, PatchState
 from common import tkJack
 
 import logging
@@ -39,11 +39,11 @@ class MidiToCV:
         for inp in mido.get_input_names():
             self.loop.create_task(self.midi_task(mido.open_input(inp)))
 
-        self.mod = module.Module(
+        self.mod = Module(
             self.name, self.patching_callback, abort_callback=self.shutdown
         )
 
-        self.voices = [Voice(0, False, 0) for _ in range(self.mod.channels)]
+        self.voices = [Voice(0, False, 0) for _ in range(Module.channels)]
         self.mod_wheel = 0
 
         self.note_jack = self.mod.add_output(name="Note", color=self.color)
@@ -82,7 +82,7 @@ class MidiToCV:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == module.PatchState.IDLE:
+                if self.mod.patch_state == PatchState.IDLE:
                     self.note_tkjack.set_color(self.color, 100, 100)
                     if any(v.on for v in self.voices):
                         self.gate_tkjack.set_color(self.color, 100, 100)
@@ -107,11 +107,11 @@ class MidiToCV:
 
     def patching_callback(self, state):
         for jack in [self.note_tkjack, self.gate_tkjack, self.mdwh_tkjack]:
-            if state == module.PatchState.PATCH_TOGGLED:
+            if state == PatchState.PATCH_TOGGLED:
                 jack.set_color(77, 100, 100)
-            elif state == module.PatchState.PATCH_ENABLED:
+            elif state == PatchState.PATCH_ENABLED:
                 jack.set_color(0, 0, 50)
-            elif state == module.PatchState.BLOCKED:
+            elif state == PatchState.BLOCKED:
                 jack.set_color(0, 100, 100)
 
     async def midi_task(self, port, interval=(1 / 60)):
@@ -152,12 +152,12 @@ class MidiToCV:
         rate"""
 
         t = time.perf_counter()
-        voct_data = np.zeros((1, 8), dtype=self.mod.sample_type)
-        gate_data = np.zeros((1, 8), dtype=self.mod.sample_type)
-        mdwh_data = np.zeros((1, 8), dtype=self.mod.sample_type)
+        voct_data = np.zeros((1, 8), dtype=Module.sample_type)
+        gate_data = np.zeros((1, 8), dtype=Module.sample_type)
+        mdwh_data = np.zeros((1, 8), dtype=Module.sample_type)
         while True:
             dt = time.perf_counter() - t
-            while dt > (1 / self.mod.packet_rate):
+            while dt > (1 / Module.packet_rate):
                 for i, v in enumerate(self.voices):
                     voct_data[0, i] = v.note * 256
                     gate_data[0, i] = 16000 if v.on else 0
@@ -166,10 +166,10 @@ class MidiToCV:
                 self.note_jack.send(voct_data.tobytes())
                 self.gate_jack.send(gate_data.tobytes())
                 self.mdwh_jack.send(mdwh_data.tobytes())
-                t += 1 / self.mod.packet_rate
+                t += 1 / Module.packet_rate
                 dt = time.perf_counter() - t
 
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / Module.packet_rate)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,13 @@
 import colorsys
 import tkinter as tk
 
-from brain import module
+from brain import Jack
 
 
 class tkJack(tk.Frame):
     """tk display widget for an input or output jack"""
 
-    def __init__(self, parent: tk.Tk, jack: module.Jack, text: str) -> None:
+    def __init__(self, parent: tk.Tk, jack: Jack, text: str) -> None:
         super().__init__(master=parent)
 
         self.light = tk.Canvas(master=self, height=20, width=20)

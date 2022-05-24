@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.lines import Line2D
 
-from brain import module
+from brain import Module, PatchState
 from common import tkJack
 
 import logging
@@ -27,7 +27,7 @@ class Oscilloscope:
     def __init__(self, loop):
         self.loop = loop
 
-        self.mod = module.Module(
+        self.mod = Module(
             self.name, self.patching_callback, abort_callback=self.shutdown
         )
         self.data_jack = self.mod.add_input("Data", self.data_callback)
@@ -35,8 +35,8 @@ class Oscilloscope:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.dataseries = [[] for _ in range(self.mod.channels)]
-        self.timeseries = [[] for _ in range(self.mod.channels)]
+        self.dataseries = [[] for _ in range(Module.channels)]
+        self.timeseries = [[] for _ in range(Module.channels)]
 
         # loop.create_task(self.random_square_wave())
         # loop.create_task(self.sin_wave())
@@ -45,12 +45,12 @@ class Oscilloscope:
         self.mod.start()
 
     def data_callback(self, data):
-        result = np.frombuffer(data, dtype=self.mod.sample_type)
+        result = np.frombuffer(data, dtype=Module.sample_type)
         if len(self.timeseries[0]) == 0:
             t = 0
         else:
-            t = self.timeseries[0][-1] + (1 / self.mod.packet_rate)
-        for i in range(self.mod.channels):
+            t = self.timeseries[0][-1] + (1 / Module.packet_rate)
+        for i in range(Module.channels):
             self.dataseries[i].append(result[i])
             self.timeseries[i].append(t)
 
@@ -76,7 +76,7 @@ class Oscilloscope:
 
         ax = fig.add_subplot()
         self.plot_lines = [
-            Line2D([], [], color=f"C{i}") for i in range(self.mod.channels)
+            Line2D([], [], color=f"C{i}") for i in range(Module.channels)
         ]
         for line in self.plot_lines:
             ax.add_line(line)
@@ -90,7 +90,7 @@ class Oscilloscope:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == module.PatchState.IDLE:
+                if self.mod.patch_state == PatchState.IDLE:
                     if self.data_jack.is_patched():
                         self.data_tkjack.set_color(self.data_jack.color, 100, 100)
                     else:
@@ -125,11 +125,11 @@ class Oscilloscope:
         self.loop.stop()
 
     def patching_callback(self, state):
-        if state == module.PatchState.PATCH_TOGGLED:
+        if state == PatchState.PATCH_TOGGLED:
             self.data_tkjack.set_color(77, 100, 100)
-        elif state == module.PatchState.PATCH_ENABLED:
+        elif state == PatchState.PATCH_ENABLED:
             self.data_tkjack.set_color(0, 0, 50)
-        elif state == module.PatchState.BLOCKED:
+        elif state == PatchState.BLOCKED:
             self.data_tkjack.set_color(0, 100, 100)
 
     async def random_square_wave(self):

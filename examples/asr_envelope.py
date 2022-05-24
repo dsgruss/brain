@@ -3,7 +3,7 @@ import numpy as np
 import tkinter as tk
 import time
 
-from brain import module
+from brain import Module, PatchState
 from common import tkJack
 
 import logging
@@ -24,7 +24,7 @@ class ASREnvelope:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = module.Module(
+        self.mod = Module(
             self.name, self.patching_callback, abort_callback=self.shutdown
         )
 
@@ -34,8 +34,8 @@ class ASREnvelope:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.gates = [0] * self.mod.channels
-        self.level = [0] * self.mod.channels
+        self.gates = [0] * Module.channels
+        self.level = [0] * Module.channels
 
         loop.create_task(self.output_task())
 
@@ -59,15 +59,15 @@ class ASREnvelope:
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     def data_callback(self, data):
-        result = np.frombuffer(data, dtype=self.mod.sample_type)
-        result = result.reshape((len(result) // self.mod.channels, self.mod.channels))
-        for i in range(self.mod.channels):
+        result = np.frombuffer(data, dtype=Module.sample_type)
+        result = result.reshape((len(result) // Module.channels, Module.channels))
+        for i in range(Module.channels):
             self.gates[i] = result[0, i]
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == module.PatchState.IDLE:
+                if self.mod.patch_state == PatchState.IDLE:
                     if self.gate_jack.is_patched():
                         self.gate_tkjack.set_color(
                             self.gate_jack.color,
@@ -95,21 +95,21 @@ class ASREnvelope:
 
     def patching_callback(self, state):
         for jack in [self.gate_tkjack, self.asr_tkjack]:
-            if state == module.PatchState.PATCH_TOGGLED:
+            if state == PatchState.PATCH_TOGGLED:
                 jack.set_color(77, 100, 100)
-            elif state == module.PatchState.PATCH_ENABLED:
+            elif state == PatchState.PATCH_ENABLED:
                 jack.set_color(0, 0, 50)
-            elif state == module.PatchState.BLOCKED:
+            elif state == PatchState.BLOCKED:
                 jack.set_color(0, 100, 100)
 
     async def output_task(self):
         t = time.perf_counter()
-        astep = 16000 / self.mod.packet_rate / self.atime
-        rstep = 16000 / self.mod.packet_rate / self.rtime
-        output = np.zeros((1, self.mod.channels), dtype=self.mod.sample_type)
+        astep = 16000 / Module.packet_rate / self.atime
+        rstep = 16000 / Module.packet_rate / self.rtime
+        output = np.zeros((1, Module.channels), dtype=Module.sample_type)
         while True:
             dt = time.perf_counter() - t
-            while dt > (1 / self.mod.packet_rate):
+            while dt > (1 / Module.packet_rate):
                 for i, v in enumerate(self.gates):
                     if self.level[i] < v:
                         self.level[i] = min(v, self.level[i] + astep)
@@ -118,10 +118,10 @@ class ASREnvelope:
                     output[0, i] = round(self.level[i])
 
                 self.asr_jack.send(output.tobytes())
-                t += 1 / self.mod.packet_rate
+                t += 1 / Module.packet_rate
                 dt = time.perf_counter() - t
 
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / Module.packet_rate)
 
 
 if __name__ == "__main__":

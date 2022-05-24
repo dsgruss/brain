@@ -1,7 +1,7 @@
 import asyncio
 import tkinter as tk
 
-from brain import module
+from brain import Module
 
 import logging
 
@@ -17,7 +17,7 @@ class Manager:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = module.Module(
+        self.mod = Module(
             self.name, self.patching_callback, abort_callback=self.shutdown
         )
 
