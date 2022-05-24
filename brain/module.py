@@ -41,8 +41,7 @@ class InputJack(Jack):
         self.callback = data_callback
         self.data_queue = deque()
         self.last_seen_data = np.zeros(
-            (parent_module.block_size, parent_module.channels),
-            dtype=parent_module.sample_type,
+            (Module.block_size, Module.channels), dtype=Module.sample_type
         )
         self.patched = False
 
@@ -78,10 +77,8 @@ class InputJack(Jack):
     def proto_callback(self, data):
         if self.callback is not None:
             self.callback(data)
-        data = np.frombuffer(data, dtype=self.parent_module.sample_type)
-        data = data.reshape(
-            (len(data) // self.parent_module.channels, self.parent_module.channels)
-        )
+        data = np.frombuffer(data, dtype=Module.sample_type)
+        data = data.reshape((len(data) // Module.channels, Module.channels))
         self.last_seen_data = data.copy()
         self.data_queue.appendleft(data)
         self.parent_module.check_process()
@@ -91,6 +88,7 @@ class InputJack(Jack):
             return self.data_queue.pop()
         else:
             return self.last_seen_data.copy()
+
 
 class OutputJack(Jack):
     def __init__(self, parent_module, address, name, color):
@@ -168,8 +166,8 @@ class Module:
         self.uuid = str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
 
-        self.inputs = []
-        self.outputs = []
+        self.inputs = {}
+        self.outputs = {}
         self.broadcast_addr = None
 
         addresses = []
@@ -215,39 +213,41 @@ class Module:
     def add_input(self, name, data_callback=None) -> InputJack:
         # Adds a new input to the module
         jack = InputJack(self, data_callback, name)
-        self.inputs.append(jack)
+        self.inputs[jack.id] = jack
         return jack
 
     def add_output(self, name, color) -> OutputJack:
         # Adds a new output to the module
         jack = OutputJack(self, self.broadcast_addr["broadcast"], name, color)
-        self.outputs.append(jack)
+        self.outputs[jack.id] = jack
         return jack
 
     def update_patch(self):
         # Trigger in update in the shared state
-        s = [
-            {"id": jack.id, "type": "input"}
-            for jack in self.inputs
-            if jack.patch_enabled
-        ]
-        s += [
-            {
-                "id": jack.id,
-                "type": "output",
-                "address": jack.endpoint[0],
-                "port": jack.endpoint[1],
-                "color": jack.color,
-            }
-            for jack in self.outputs
-            if jack.patch_enabled
-        ]
+        s = {
+            "inputs": [
+                {"id": jack.id, "type": "input"}
+                for jack in self.inputs.values()
+                if jack.patch_enabled
+            ],
+            "outputs": [
+                {
+                    "id": jack.id,
+                    "type": "output",
+                    "address": jack.endpoint[0],
+                    "port": jack.endpoint[1],
+                    "color": jack.color,
+                }
+                for jack in self.outputs.values()
+                if jack.patch_enabled
+            ],
+        }
         self.protocol.update(s)
 
     def abort_all(self):
         self.protocol.abort_all()
 
-    def update_patch_state(self, patch_state, global_states):
+    def update_patch_state(self, patch_state, active_inputs, active_outputs):
         if self.patch_state != patch_state:
             self.patch_state = patch_state
             if self.patching_callback is not None:
@@ -255,17 +255,11 @@ class Module:
             logging.info(patch_state)
 
             if patch_state == PatchState.PATCH_TOGGLED:
-                if global_states[0]["type"] == "input":
-                    input = global_states[0]
-                    output = global_states[1]
-                else:
-                    input = global_states[1]
-                    output = global_states[0]
-                if input["uuid"] == self.uuid:
-                    self.make_connection(input, output)
+                if active_inputs[0]["uuid"] == self.uuid:
+                    self.make_connection(active_inputs[0], active_outputs[0])
 
     def make_connection(self, input, output):
-        input_jack = [jack for jack in self.inputs if jack.id == input["id"]][0]
+        input_jack = self.inputs[input["id"]]
         input_jack.connect(self.broadcast_addr["addr"], output["port"], output["color"])
 
     def check_process(self):
@@ -273,7 +267,7 @@ class Module:
             return
 
         data_available = True
-        for jack in self.inputs:
+        for jack in self.inputs.values():
             if not jack.is_patched():
                 continue
             if len(jack.data_queue) >= self.buffer_size:
@@ -308,7 +302,7 @@ class PatchProtocol(asyncio.DatagramProtocol):
         self.state_callback = state_callback
         self.abort_callback = abort_callback
 
-        self.states = {uuid: []}
+        self.states = {uuid: {"inputs": [], "outputs": []}}
 
         super().__init__()
 
@@ -335,24 +329,28 @@ class PatchProtocol(asyncio.DatagramProtocol):
         self.datagram_send({"message": "ABORT", "uuid": "GLOBAL"})
 
     def push_update(self):
-        all_states = []
-        for uuid, state_list in self.states.items():
-            for state in state_list:
+        active_inputs = []
+        active_outputs = []
+        for uuid, full_state in self.states.items():
+            for state in full_state["inputs"]:
                 a = state.copy()
                 a["uuid"] = uuid
-                all_states.append(a)
-        logging.info(all_states)
-        if len(all_states) >= 3:
-            self.state_callback(PatchState.BLOCKED, all_states)
-        elif len(all_states) == 2:
-            if all_states[0]["type"] == all_states[1]["type"]:
-                self.state_callback(PatchState.BLOCKED, all_states)
-            else:
-                self.state_callback(PatchState.PATCH_TOGGLED, all_states)
-        elif len(all_states) == 1:
-            self.state_callback(PatchState.PATCH_ENABLED, all_states)
+                active_inputs.append(a)
+            for state in full_state["outputs"]:
+                a = state.copy()
+                a["uuid"] = uuid
+                active_outputs.append(a)
+        logging.info("Global state: " + str(active_inputs) + " " + str(active_outputs))
+
+        if len(active_inputs) >= 2 or len(active_outputs) >= 2:
+            patch_state = PatchState.BLOCKED
+        elif len(active_inputs) == 1 and len(active_outputs) == 1:
+            patch_state = PatchState.PATCH_TOGGLED
+        elif len(active_inputs) + len(active_outputs) == 1:
+            patch_state = PatchState.PATCH_ENABLED
         else:
-            self.state_callback(PatchState.IDLE, all_states)
+            patch_state = PatchState.IDLE
+        self.state_callback(patch_state, active_inputs, active_outputs)
 
     def datagram_received(self, data: bytes, addr) -> None:
         try:
