@@ -31,9 +31,8 @@ class Filter:
         self.in_jack = self.mod.add_input("Audio In")
         self.out_jack = self.mod.add_output("Audio Out", color=self.color)
 
-        self.sos = signal.butter(4, 250, "low", False, "sos", self.mod.sample_rate)
-        logging.info(str(self.sos.shape))
         self.filter_z = np.zeros((2, 2, 8))
+        self.filter_val = 2
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -55,10 +54,24 @@ class Filter:
         self.out_tkjack = tkJack(self.root, self.out_jack, "Audio Out")
         self.out_tkjack.place(x=10, y=170)
 
+        self.slide_val = tk.DoubleVar()
+        tk.Scale(
+            self.root,
+            variable=self.slide_val,
+            from_=1,
+            to=4,
+            orient=tk.HORIZONTAL,
+            resolution=0.001,
+        ).place(x=10, y=100)
+
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     def data_callback(self):
         initial = self.in_jack.get_data()
+        self.filter_val += 0.025 * (self.slide_val.get() - self.filter_val)
+        self.sos = signal.butter(
+            4, 10 ** self.filter_val, "low", False, "sos", self.mod.sample_rate
+        )
         result, self.filter_z = signal.sosfilt(
             self.sos, initial, axis=0, zi=self.filter_z
         )
