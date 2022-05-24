@@ -44,6 +44,7 @@ class MidiToCV:
         )
 
         self.voices = [Voice(0, False, 0) for _ in range(self.mod.channels)]
+        self.mod_wheel = 0
 
         self.note_jack = self.mod.add_output(name="Note", color=self.color)
         self.gate_jack = self.mod.add_output(name="Gate", color=self.color)
@@ -73,6 +74,9 @@ class MidiToCV:
         self.gate_tkjack = tkJack(self.root, self.gate_jack, "Gate")
         self.gate_tkjack.place(x=10, y=90)
 
+        self.mdwh_tkjack = tkJack(self.root, self.mdwh_jack, "Mod Wheel")
+        self.mdwh_tkjack.place(x=10, y=130)
+
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     async def ui_task(self, interval=(1 / 60)):
@@ -84,6 +88,9 @@ class MidiToCV:
                         self.gate_tkjack.set_color(self.color, 100, 100)
                     else:
                         self.gate_tkjack.set_color(0, 0, 0)
+                    self.mdwh_tkjack.set_color(
+                        self.color, 100, int(self.mod_wheel / 128 * 100)
+                    )
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -134,6 +141,9 @@ class MidiToCV:
                         voice_steal = min(self.voices, key=lambda x: x.timestamp)
                         voice_steal.note = message.note
                         voice_steal.timestamp = self.timestamp
+                elif message.type == "control_change":
+                    if message.control == 1:
+                        self.mod_wheel = message.value
                 logging.info("\n\t".join([str(v) for v in self.voices]))
             await asyncio.sleep(interval)
 
@@ -144,15 +154,18 @@ class MidiToCV:
         t = time.perf_counter()
         voct_data = np.zeros((1, 8), dtype=self.mod.sample_type)
         gate_data = np.zeros((1, 8), dtype=self.mod.sample_type)
+        mdwh_data = np.zeros((1, 8), dtype=self.mod.sample_type)
         while True:
             dt = time.perf_counter() - t
             while dt > (1 / self.mod.packet_rate):
                 for i, v in enumerate(self.voices):
                     voct_data[0, i] = v.note * 256
                     gate_data[0, i] = 16000 if v.on else 0
+                    mdwh_data[0, i] = self.mod_wheel * 256
 
                 self.note_jack.send(voct_data.tobytes())
                 self.gate_jack.send(gate_data.tobytes())
+                self.mdwh_jack.send(mdwh_data.tobytes())
                 t += 1 / self.mod.packet_rate
                 dt = time.perf_counter() - t
 
