@@ -27,14 +27,6 @@ class Jack:
             self.patch_enabled = state
             self.parent_module.update_patch()
 
-    def is_patched(self) -> bool:
-        # Returns True if this jack is connected to another one
-        return False
-
-    def clear(self):
-        # Disconnect this jack from all other modules
-        pass
-
 
 class InputJack(Jack):
     def __init__(self, parent_module, data_callback, name):
@@ -43,23 +35,31 @@ class InputJack(Jack):
         self.last_seen_data = np.zeros(
             (Module.block_size, Module.channels), dtype=Module.sample_type
         )
-        self.patched = False
+        self.connected_jack = None
 
         super().__init__(parent_module, name)
 
     def is_patched(self) -> bool:
-        return self.patched
+        return self.connected_jack is not None
 
     def clear(self):
         if self.is_patched():
             self.endpoint.close()
             self.sock.close()
-            self.patched = False
+            self.connected_jack = None
 
-    def connect(self, address, port, color):
+    def disconnect(self, output_uuid, output_id):
+        if self.is_connected(output_uuid, output_id):
+            self.clear()
+
+    def is_connected(self, output_uuid, output_id):
+        return self.connected_jack == (output_uuid, output_id)
+
+    def connect(self, address, port, output_color, output_uuid, output_id):
         if self.is_patched():
             self.clear()
-        self.color = color
+        self.color = output_color
+        self.connected_jack = (output_uuid, output_id)
 
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
@@ -71,8 +71,6 @@ class InputJack(Jack):
             lambda: self.protocol, sock=self.sock
         )
         loop.create_task(self.endpoint)
-
-        self.patched = True
 
     def proto_callback(self, data):
         if self.callback is not None:
@@ -93,6 +91,7 @@ class InputJack(Jack):
 class OutputJack(Jack):
     def __init__(self, parent_module, address, name, color):
         self.color = color
+        self.connected_jacks = set()
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
         # For now we just pick a port, but this should be negotiated during device discovery
@@ -104,6 +103,21 @@ class OutputJack(Jack):
     def send(self, data: bytes):
         # Currently sending all the data at all times
         self.sock.sendto(data, self.endpoint)
+
+    def connect(self, input_uuid, input_id):
+        self.connected_jacks.add((input_uuid, input_id))
+
+    def is_connected(self, input_uuid, input_id):
+        return (input_uuid, input_id) in self.connected_jacks
+
+    def disconnect(self, input_uuid, input_id):
+        self.connected_jacks.discard((input_uuid, input_id))
+
+    def is_patched(self) -> bool:
+        return len(self.connected_jacks) > 0
+
+    def clear(self):
+        self.connected_jacks.clear()
 
 
 class PatchState(Enum):
@@ -256,11 +270,31 @@ class Module:
 
             if patch_state == PatchState.PATCH_TOGGLED:
                 if active_inputs[0]["uuid"] == self.uuid:
-                    self.make_connection(active_inputs[0], active_outputs[0])
+                    self.toggle_input_connection(active_inputs[0], active_outputs[0])
+                if active_outputs[0]["uuid"] == self.uuid:
+                    self.toggle_output_connection(active_inputs[0], active_outputs[0])
 
-    def make_connection(self, input, output):
+    def toggle_input_connection(self, input, output):
         input_jack = self.inputs[input["id"]]
-        input_jack.connect(self.broadcast_addr["addr"], output["port"], output["color"])
+        output_uuid, output_id = output["uuid"], output["id"]
+        if input_jack.is_connected(output_uuid, output_id):
+            input_jack.disconnect(output_uuid, output_id)
+        else:
+            input_jack.connect(
+                self.broadcast_addr["addr"],
+                output["port"],
+                output["color"],
+                output["uuid"],
+                output["id"],
+            )
+
+    def toggle_output_connection(self, input, output):
+        output_jack = self.outputs[output["id"]]
+        input_uuid, input_id = input["uuid"], input["id"]
+        if output_jack.is_connected(input_uuid, input_id):
+            output_jack.disconnect(input_uuid, input_id)
+        else:
+            output_jack.connect(input_uuid, input_id)
 
     def check_process(self):
         if self.process_callback is None:
