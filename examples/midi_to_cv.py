@@ -6,7 +6,7 @@ import tkinter as tk
 
 from dataclasses import dataclass
 
-from brain import Module, PatchState
+from brain import Module
 from common import tkJack
 
 import logging

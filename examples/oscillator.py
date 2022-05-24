@@ -3,7 +3,7 @@ import numpy as np
 import tkinter as tk
 import time
 
-from brain import Module, PatchState
+from brain import Module
 
 import logging
 

@@ -4,7 +4,7 @@ import tkinter as tk
 
 from scipy import signal
 
-from brain import Module, PatchState
+from brain import Module
 from common import tkJack
 
 import logging
@@ -61,8 +61,9 @@ class Filter:
             from_=1,
             to=4,
             orient=tk.HORIZONTAL,
-            resolution=0.001,
+            resolution=0.001
         ).place(x=10, y=100)
+        self.slide_val.set(4)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 

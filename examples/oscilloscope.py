@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.lines import Line2D
 
-from brain import Module, PatchState
+from brain import Module
 from common import tkJack
 
 import logging
