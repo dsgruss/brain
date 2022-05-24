@@ -14,16 +14,14 @@ class tkJack(tk.Frame):
         self.light.create_oval(5, 5, 20, 20, fill="#008080", tags="light")
         self.light.pack(side="left", fill="y")
 
-        self.checkbutton_value = tk.BooleanVar()
-        self.checkbutton_value.trace_add("write", self.checkbutton_handler)
+        self.press_value = tk.BooleanVar()
+        self.press_value.trace_add("write", self.checkbutton_handler)
 
-        self.light.bind("<ButtonPress-1>", lambda _: self.checkbutton_value.set(True))
-        self.light.bind(
-            "<ButtonRelease-1>", lambda _: self.checkbutton_value.set(False)
-        )
+        self.light.bind("<ButtonPress-1>", lambda _: self.press_value.set(True))
+        self.light.bind("<ButtonRelease-1>", lambda _: self.press_value.set(False))
 
         self.checkbutton = tk.Checkbutton(
-            master=self, text=text, variable=self.checkbutton_value
+            master=self, text=text, variable=self.press_value
         )
         self.checkbutton.pack(side="left", fill="y")
 
@@ -31,7 +29,7 @@ class tkJack(tk.Frame):
         self.patch_state = PatchState.IDLE
 
     def checkbutton_handler(self, *_) -> None:
-        self.jack.set_patch_enabled(self.checkbutton_value.get())
+        self.jack.set_patch_enabled(self.press_value.get())
 
     def patching_callback(self, state: PatchState) -> None:
         self.patch_state = state
