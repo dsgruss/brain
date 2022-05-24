@@ -106,7 +106,7 @@ class MidiToCV:
         self.loop.stop()
 
     def patching_callback(self, state):
-        for jack in [self.note_tkjack, self.gate_tkjack]:
+        for jack in [self.note_tkjack, self.gate_tkjack, self.mdwh_tkjack]:
             if state == module.PatchState.PATCH_TOGGLED:
                 jack.set_color(77, 100, 100)
             elif state == module.PatchState.PATCH_ENABLED:
