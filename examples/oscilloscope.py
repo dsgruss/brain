@@ -90,11 +90,8 @@ class Oscilloscope:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == PatchState.IDLE:
-                    if self.data_jack.is_patched():
-                        self.data_tkjack.set_color(self.data_jack.color, 100, 100)
-                    else:
-                        self.data_tkjack.set_color(0, 0, 0)
+                self.data_tkjack.update_display(1)
+
                 for i in range(self.mod.channels):
                     while (
                         len(self.timeseries[i]) >= 2
@@ -125,12 +122,7 @@ class Oscilloscope:
         self.loop.stop()
 
     def patching_callback(self, state):
-        if state == PatchState.PATCH_TOGGLED:
-            self.data_tkjack.set_color(77, 100, 100)
-        elif state == PatchState.PATCH_ENABLED:
-            self.data_tkjack.set_color(0, 0, 50)
-        elif state == PatchState.BLOCKED:
-            self.data_tkjack.set_color(0, 100, 100)
+        self.data_tkjack.patching_callback(state)
 
     async def random_square_wave(self):
         while True:

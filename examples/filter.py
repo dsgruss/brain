@@ -80,13 +80,9 @@ class Filter:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == PatchState.IDLE:
-                    if self.in_jack.is_patched():
-                        self.in_tkjack.set_color(self.in_jack.color, 100, 100)
-                        self.out_tkjack.set_color(self.out_jack.color, 100, 100)
-                    else:
-                        self.in_tkjack.set_color(0, 0, 0)
-                        self.out_tkjack.set_color(0, 0, 0)
+                for jack in [self.in_tkjack, self.out_tkjack]:
+                    jack.update_display(1)
+
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -103,12 +99,7 @@ class Filter:
 
     def patching_callback(self, state):
         for jack in [self.in_tkjack, self.out_tkjack]:
-            if state == PatchState.PATCH_TOGGLED:
-                jack.set_color(77, 100, 100)
-            elif state == PatchState.PATCH_ENABLED:
-                jack.set_color(0, 0, 50)
-            elif state == PatchState.BLOCKED:
-                jack.set_color(0, 100, 100)
+            jack.patching_callback(state)
 
 
 if __name__ == "__main__":

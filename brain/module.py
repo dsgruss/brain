@@ -19,7 +19,7 @@ class Jack:
     def __init__(self, parent_module, name):
         self.parent_module = parent_module
         self.name = name
-        self.id = next(Jack.id_iter)
+        self.id = str(next(Jack.id_iter))
 
     def set_patch_enabled(self, state: bool):
         # Indicate the jack is available for patching and notify other modules
@@ -53,6 +53,9 @@ class InputJack(Jack):
             self.clear()
 
     def is_connected(self, output_uuid, output_id):
+        logging.info("Connected input jack test:")
+        logging.info(self.connected_jack)
+        logging.info(((output_uuid, output_id)))
         return self.connected_jack == (output_uuid, output_id)
 
     def connect(self, address, port, output_color, output_uuid, output_id):
@@ -108,6 +111,9 @@ class OutputJack(Jack):
         self.connected_jacks.add((input_uuid, input_id))
 
     def is_connected(self, input_uuid, input_id):
+        logging.info("Connected output jack test:")
+        logging.info(self.connected_jacks)
+        logging.info(((input_uuid, input_id)))
         return (input_uuid, input_id) in self.connected_jacks
 
     def disconnect(self, input_uuid, input_id):
@@ -264,15 +270,41 @@ class Module:
     def update_patch_state(self, patch_state, active_inputs, active_outputs):
         if self.patch_state != patch_state:
             self.patch_state = patch_state
-            if self.patching_callback is not None:
-                self.patching_callback(patch_state)
             logging.info(patch_state)
+
+            for jack in self.inputs.values():
+                jack.patch_member = False
+            for jack in self.outputs.values():
+                jack.patch_member = False
+
+            if patch_state == PatchState.PATCH_ENABLED:
+                if len(active_inputs) == 1:
+                    held_input_uuid = active_inputs[0]["uuid"]
+                    held_input_id = active_inputs[0]["id"]
+                    if self.uuid == held_input_uuid:
+                        self.inputs[held_input_id].patch_member = True
+                    for jack in self.outputs.values():
+                        jack.patch_member = jack.is_connected(
+                            held_input_uuid, held_input_id
+                        )
+                elif len(active_outputs) == 1:
+                    held_output_uuid = active_outputs[0]["uuid"]
+                    held_output_id = active_outputs[0]["id"]
+                    if self.uuid == held_output_uuid:
+                        self.outputs[held_output_id].patch_member = True
+                    for jack in self.inputs.values():
+                        jack.patch_member = jack.is_connected(
+                            held_output_uuid, held_output_id
+                        )
 
             if patch_state == PatchState.PATCH_TOGGLED:
                 if active_inputs[0]["uuid"] == self.uuid:
                     self.toggle_input_connection(active_inputs[0], active_outputs[0])
                 if active_outputs[0]["uuid"] == self.uuid:
                     self.toggle_output_connection(active_inputs[0], active_outputs[0])
+
+            if self.patching_callback is not None:
+                self.patching_callback(patch_state)
 
     def toggle_input_connection(self, input, output):
         input_jack = self.inputs[input["id"]]

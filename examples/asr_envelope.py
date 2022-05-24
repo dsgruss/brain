@@ -67,18 +67,9 @@ class ASREnvelope:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == PatchState.IDLE:
-                    if self.gate_jack.is_patched():
-                        self.gate_tkjack.set_color(
-                            self.gate_jack.color,
-                            100,
-                            min(max(self.gates) / 16000 * 100, 100),
-                        )
-                    else:
-                        self.gate_tkjack.set_color(0, 0, 0)
-                    self.asr_tkjack.set_color(
-                        self.color, 100, min(max(self.level) / 16000 * 100, 100)
-                    )
+                self.gate_tkjack.update_display(max(self.gates) / 16000)
+                self.asr_tkjack.update_display(max(self.level) / 16000)
+
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -95,12 +86,7 @@ class ASREnvelope:
 
     def patching_callback(self, state):
         for jack in [self.gate_tkjack, self.asr_tkjack]:
-            if state == PatchState.PATCH_TOGGLED:
-                jack.set_color(77, 100, 100)
-            elif state == PatchState.PATCH_ENABLED:
-                jack.set_color(0, 0, 50)
-            elif state == PatchState.BLOCKED:
-                jack.set_color(0, 100, 100)
+            jack.patching_callback(state)
 
     async def output_task(self):
         t = time.perf_counter()

@@ -116,17 +116,9 @@ class AudioInterface:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == PatchState.IDLE:
-                    if self.in_jack.is_patched():
-                        self.in_tkjack.set_color(self.in_jack.color, 100, 100)
-                    else:
-                        self.in_tkjack.set_color(0, 0, 0)
-                    if self.level_jack.is_patched():
-                        self.level_tkjack.set_color(
-                            self.level_jack.color, 100, self.level_value
-                        )
-                    else:
-                        self.level_tkjack.set_color(0, 0, 0)
+                self.in_tkjack.update_display(1)
+                self.level_tkjack.update_display(self.level_value)
+
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -143,12 +135,7 @@ class AudioInterface:
 
     def patching_callback(self, state):
         for jack in [self.in_tkjack, self.level_tkjack]:
-            if state == PatchState.PATCH_TOGGLED:
-                jack.set_color(77, 100, 100)
-            elif state == PatchState.PATCH_ENABLED:
-                jack.set_color(0, 0, 50)
-            elif state == PatchState.BLOCKED:
-                jack.set_color(0, 100, 100)
+            jack.patching_callback(state)
 
     def audio_callback(self, outdata, frames, time, status):
         try:
@@ -158,7 +145,7 @@ class AudioInterface:
             outdata[:] = np.zeros((Module.block_size, 1))
             for i in range(Module.channels):
                 outdata[:, 0] += (data[:, i] * (level[0, i] / (4 * 16000))).astype(int)
-            self.level_value = min(max(level[0, :]) / 16000 * 100, 100)
+            self.level_value = max(level[0, :]) / 16000
         except Empty:
             outdata[:] = np.zeros((Module.block_size, 1))
 

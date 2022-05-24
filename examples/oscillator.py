@@ -73,15 +73,14 @@ class Oscillator:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                if self.mod.patch_state == PatchState.IDLE:
-                    self.sin_tkjack.set_color(self.color, 100, 100)
-                    self.tri_tkjack.set_color(self.color, 100, 100)
-                    self.saw_tkjack.set_color(self.color, 100, 100)
-                    self.sqr_tkjack.set_color(self.color, 100, 100)
-                    if self.note_jack.is_patched():
-                        self.note_tkjack.set_color(self.note_jack.color, 100, 100)
-                    else:
-                        self.note_tkjack.set_color(0, 0, 0)
+                for jack in [
+                    self.note_tkjack,
+                    self.sin_tkjack,
+                    self.tri_tkjack,
+                    self.saw_tkjack,
+                    self.sqr_tkjack,
+                ]:
+                    jack.update_display(1)
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
@@ -104,12 +103,7 @@ class Oscillator:
             self.saw_tkjack,
             self.sqr_tkjack,
         ]:
-            if state == PatchState.PATCH_TOGGLED:
-                jack.set_color(77, 100, 100)
-            elif state == PatchState.PATCH_ENABLED:
-                jack.set_color(0, 0, 50)
-            elif state == PatchState.BLOCKED:
-                jack.set_color(0, 100, 100)
+            jack.patching_callback(state)
 
     async def output_task(self):
         t = time.perf_counter()
