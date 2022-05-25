@@ -1,3 +1,4 @@
+import asyncio
 import json
 import netifaces
 import socket
@@ -12,6 +13,109 @@ class PatchState(Enum):
     PATCH_ENABLED = 1  # One single button pushed
     PATCH_TOGGLED = 2  # Two buttons pushed, consisting of an input and output
     BLOCKED = 3  # Three or more buttons pushed or two of the same type
+
+
+class ConsensusProtocol(asyncio.DatagramProtocol):
+
+    polling_active = False
+    polling_leader = ""
+    polling_sequence_number = 0
+    poll_responses = []
+
+    def __init__(self, uuid, port) -> None:
+        self.uuid = uuid
+        self.port = port
+        self.sequence_number = 0
+        self.broadcast_addrs = []
+
+        for interface in netifaces.interfaces():
+            interfaces_details = netifaces.ifaddresses(interface)
+            if netifaces.AF_INET in interfaces_details:
+                for detail in interfaces_details[netifaces.AF_INET]:
+                    if detail["addr"] != "127.0.0.1":
+                        self.broadcast_addrs.append((detail["broadcast"], port))
+
+        self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
+        self.sock.bind(("", self.port))
+
+        super().__init__()
+
+    def datagram_send(self, json_msg):
+        payload = bytes(json.dumps(json_msg), "utf8")
+        for addr in self.broadcast_addrs:
+            self.sock.sendto(payload, addr)
+
+    def start_poll(self):
+        self.sequence_number += 1
+        self.poll_responses = []
+        self.polling_active = True
+        self.polling_sequence_number = self.sequence_number
+        self.polling_leader = self.uuid
+        self.datagram_send(
+            {
+                "message": "POLL",
+                "uuid": self.uuid,
+                "sequence_number": self._sequence_number,
+            }
+        )
+
+    def datagram_received(self, data: bytes, addr) -> None:
+        try:
+            response = json.loads(data)
+        except json.JSONDecodeError:
+            return
+        if (
+            "message" not in response
+            or "uuid" not in response
+            or response["uuid"] == self.uuid
+        ):
+            return
+
+        if not self.polling_active:
+            if response["message"] == "POLL":
+                self.polling_active = True
+                self.polling_leader = response["uuid"]
+                self.polling_sequence_number = response["sequence_number"]
+                self.datagram_send(
+                    {
+                        "message": "OFFER",
+                        "uuid": self.uuid,
+                        "leader_uuid": self.polling_leader,
+                        "sequence_number": self.polling_sequence_number,
+                        "local_state": self._local_state,
+                    }
+                )
+        else:
+            if response["message"] == "POLL":
+                # Polling conflict detected
+                if self.polling_leader == self.uuid:
+                    if self.uuid < response["uuid"]:
+                        # We have the lower id, so we take priority
+                        self.start_poll()
+                    else:
+                        # Defer to the more recent poll
+                        self.polling_active = False
+                        self.datagram_received(data, addr)
+                else:
+                    if response["uuid"] <= self.polling_leader:
+                        # Respond to the new poll only if it takes priority
+                        self.polling_active = False
+                        self.datagram_received(data, addr)
+                    else:
+                        # Drop polls that come from a higher id
+                        return
+            elif response["message"] == "OFFER":
+                # Only accept offered data if we are the leader and the
+                # sequence is correct
+                if (
+                    self.polling_leader == self.uuid
+                    and response["leader_uuid"] == self.uuid
+                    and response["sequence_number"] == self.polling_sequence_number
+                ):
+                    self.poll_responses.extend(response["local_state"])
+            elif response["message"] == "QUORUM":
+                self.state = response["global_state"]
 
 
 class Consensus:
@@ -45,11 +149,6 @@ class Consensus:
 
         self._sock.bind(("", self.consensus_port))
         self._sock.settimeout(1)
-
-        for interface in netifaces.interfaces():
-            interfaces_details = netifaces.ifaddresses(interface)
-            if netifaces.AF_INET in interfaces_details:
-                self._network_interfaces.extend(interfaces_details[netifaces.AF_INET])
 
         print(self._network_interfaces)
         threading.Thread(target=self._loop, daemon=True).start()
@@ -137,18 +236,6 @@ class Consensus:
                     self.state = response["global_state"]
             except socket.timeout:
                 print(self.state, self._local_state, self._local_state_changed)
-
-    def send(self, json_msg):
-        for interface in self._network_interfaces:
-            if interface["addr"] != "127.0.0.1":
-                self._sock.sendto(
-                    bytes(
-                        json.dumps(json_msg),
-                        "utf8",
-                    ),
-                    (interface["broadcast"], self.consensus_port),
-                )
-                print(interface)
 
     def update(self, local_state):
         # Updates the local state and triggers a global check-in

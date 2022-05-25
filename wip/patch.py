@@ -167,7 +167,6 @@ class Shell(cmd.Cmd):
                     except socket.timeout:
                         continue
 
-
             def audio_in_eth_callback(outdata, frames, time, status):
                 assert frames == blocksize
                 if status.output_underflow:
@@ -196,7 +195,7 @@ class Shell(cmd.Cmd):
             self.open_audio_devices.append(s)
 
             t = threading.Semaphore()
-            threading.Thread(target=recv_thread, args=(t, ), daemon=True).start()
+            threading.Thread(target=recv_thread, args=(t,), daemon=True).start()
             self.active_threads.append(t)
             while not q.full():
                 pass
@@ -251,7 +250,7 @@ def main():
     else:
         print("Acceptable hostapi not found.")
         exit(-1)
-    
+
     print("Discovering devices...")
     hosts = sweep.find_modules()
     s = Shell(api_index, hosts)
