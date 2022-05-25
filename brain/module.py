@@ -127,7 +127,7 @@ class OutputJack(Jack):
 
 
 class PatchState(Enum):
-    """Global state possibilities"""
+    """Enum used to track a global state over all connected modules"""
 
     IDLE = 0  #: No buttons pushed across all modules
     PATCH_ENABLED = 1  #: One single button pushed
@@ -136,17 +136,17 @@ class PatchState(Enum):
 
 
 class Module:
-    """The `Module` object mediates all of the patching and dataflow between all other modules on
-    the network. Typically, a module only needs to be written as a processor on the input state
-    to the output state and handle the associated user interface.
+    """The ``Module`` object mediates all of the patching and dataflow between all other modules on
+    the network. Typically, a module only needs to be written as a processor on the input state to
+    the output state and handle the associated user interface.
 
-    :param name: the name of the module
+    :param name: The name of the module
 
-    :param patching_callback: function called when the global patch state changes
+    :param patching_callback: Function called when the global patch state changes
 
-    :param process_callback: function called for the syncronized processing step
+    :param process_callback: Function called for the synchronized processing step
 
-    :param abort_callback: function called for a global shutdown event
+    :param abort_callback: Function called for a global shutdown event
     """
 
     #: Preferred communication subnet in case multiple network interfaces are present
@@ -158,10 +158,10 @@ class Module:
     #: Frequency in packets per second to send audio and CV data
     packet_rate = 1000
 
-    #: Audio sample rate in Hz (must be a multiple of packet_rate)
+    #: Audio sample rate in Hz (must be a multiple of ``packet_rate``)
     sample_rate = 48000
 
-    #: Number of samples in a full-length packet (`sample_rate` / `packet_rate`)
+    #: Number of samples in a full-length packet (``sample_rate`` / ``packet_rate``)
     block_size = 48
 
     #: Number of independent audio processing channels
@@ -221,7 +221,9 @@ class Module:
             abort_callback,
         )
 
-    def start(self):
+    def start(self) -> None:
+        """Start listening to directives on the network interface and sending updates"""
+
         if self.patching_callback is not None:
             self.patching_callback(self.patch_state)
 
@@ -230,20 +232,38 @@ class Module:
             loop.create_datagram_endpoint(lambda: self.protocol, sock=self.sock)
         )
 
-    def add_input(self, name, data_callback=None) -> InputJack:
-        # Adds a new input to the module
+    def add_input(self, name: str, data_callback=None) -> InputJack:
+        """Adds a new input jack to the module
+
+        :param name: Identifier describing the new jack
+
+        :param data_callback: Function that is called when new data arrives at the input jack. This
+            callback fires immediately when the data is received, so use ``process_callback`` if a
+            synchronized consumption of multiple inputs is desired (i.e. the signals are not
+            processed independently).
+
+        :return: The created jack instance
+        """
         jack = InputJack(self, data_callback, name)
         self.inputs[jack.id] = jack
         return jack
 
-    def add_output(self, name, color) -> OutputJack:
-        # Adds a new output to the module
+    def add_output(self, name: str, color: int) -> OutputJack:
+        """Adds a new output jack to the module
+
+        :param name: Identifies describing the new jack
+
+        :param color: An HSV Hue value for the jack's primary color. This color is propagated to any
+            input jacks that it is patched to.
+
+        :return: The created jack instance
+        """
         jack = OutputJack(self, self.broadcast_addr["broadcast"], name, color)
         self.outputs[jack.id] = jack
         return jack
 
-    def update_patch(self):
-        # Trigger in update in the shared state
+    def update_patch(self) -> None:
+        """Triggers an update in the shared global state"""
         s = {
             "inputs": [
                 {"id": jack.id, "type": "input"}
@@ -264,10 +284,19 @@ class Module:
         }
         self.protocol.update(s)
 
-    def abort_all(self):
+    def abort_all(self) -> None:
+        """Sends an abort directive to all connected modules"""
         self.protocol.abort_all()
 
     def update_patch_state(self, patch_state, active_inputs, active_outputs):
+        """Callback used to manages changes in the global state
+        
+        :param patch_state: The current ``PatchState`` of all modules
+
+        :param active_inputs: List of input jacks currently involved in patching
+
+        :param active_outputs: List of output jacks currently involved in patching
+        """
         if self.patch_state != patch_state:
             self.patch_state = patch_state
             logging.info(patch_state)
@@ -314,7 +343,15 @@ class Module:
             if self.patching_callback is not None:
                 self.patching_callback(patch_state)
 
-    def toggle_input_connection(self, input, output):
+    def toggle_input_connection(self, input, output) -> None:
+        """Toggles an input connection that is owned by this module, either connecting it to the
+        given output or disconnecting it if it is already connected. This operation only updates the
+        local state of the input jack, rather than triggering an update across all modules.
+        
+        :param input: The input jack to be toggled
+        
+        :param output: The external output jack to connect to or disconnect from
+        """
         input_jack = self.inputs[input["id"]]
         output_uuid, output_id = output["uuid"], output["id"]
         if input_jack.is_connected(output_uuid, output_id):
@@ -328,7 +365,15 @@ class Module:
                 output["id"],
             )
 
-    def toggle_output_connection(self, input, output):
+    def toggle_output_connection(self, input, output) -> None:
+        """Toggles an output connection that is owned by this module, either connecting it to the
+        given input or disconnecting it if it is already connected. This operation only updates the
+        local state of the output jack, rather than triggering an update across all modules.
+        
+        :param input: The external input back to connect to or disconnect from
+        
+        :param output: The output jack to be toggled
+        """
         output_jack = self.outputs[output["id"]]
         input_uuid, input_id = input["uuid"], input["id"]
         if output_jack.is_connected(input_uuid, input_id):
@@ -336,7 +381,10 @@ class Module:
         else:
             output_jack.connect(input_uuid, input_id)
 
-    def check_process(self):
+    def check_process(self) -> None:
+        """Callback that determines if data is ready for a synchronized processing step across all of
+        the owned input jacks
+        """
         if self.process_callback is None:
             return
 
