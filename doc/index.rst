@@ -11,7 +11,11 @@ Welcome to brain's documentation!
    :caption: Contents:
 
 .. autoclass:: brain.Module
-   :members: start, add_input, add_output, abort_all
+   :members: start, add_input, add_output, get_patch_state, get_data, is_patched, is_patch_member, send_data, set_patch_enabled, abort_all
+
+.. autoclass:: brain.EventHandler
+   :members:
+   :undoc-members:
 
 .. autoclass:: brain.PatchState
    :members:

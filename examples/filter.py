@@ -4,7 +4,7 @@ import tkinter as tk
 
 from scipy import signal
 
-from brain import Module
+from brain import Module, EventHandler, PatchState
 from common import tkJack
 
 import logging
@@ -22,12 +22,7 @@ class Filter:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = Module(
-            self.name,
-            self.patching_callback,
-            process_callback=self.data_callback,
-            abort_callback=self.shutdown,
-        )
+        self.mod = Module(self.name, FilterEventHandler(self))
         self.in_jack = self.mod.add_input("Audio In")
         self.out_jack = self.mod.add_output("Audio Out", color=self.color)
 
@@ -61,7 +56,7 @@ class Filter:
             from_=1,
             to=4,
             orient=tk.HORIZONTAL,
-            resolution=0.001
+            resolution=0.001,
         ).place(x=10, y=100)
         self.slide_val.set(4)
 
@@ -101,6 +96,20 @@ class Filter:
     def patching_callback(self, state):
         for jack in [self.in_tkjack, self.out_tkjack]:
             jack.patching_callback(state)
+
+
+class FilterEventHandler(EventHandler):
+    def __init__(self, app: Filter) -> None:
+        self.app = app
+
+    def patch(self, state: PatchState) -> None:
+        self.app.patching_callback(state)
+
+    def process(self) -> None:
+        self.app.data_callback()
+
+    def abort(self) -> None:
+        self.app.shutdown()
 
 
 if __name__ == "__main__":

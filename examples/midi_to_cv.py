@@ -6,7 +6,7 @@ import tkinter as tk
 
 from dataclasses import dataclass
 
-from brain import Module
+from brain import Module, EventHandler, PatchState
 from common import tkJack
 
 import logging
@@ -39,9 +39,7 @@ class MidiToCV:
         for inp in mido.get_input_names():
             self.loop.create_task(self.midi_task(mido.open_input(inp)))
 
-        self.mod = Module(
-            self.name, self.patching_callback, abort_callback=self.shutdown
-        )
+        self.mod = Module(self.name, MidiToCVEventHandler(self))
 
         self.voices = [Voice(0, False, 0) for _ in range(Module.channels)]
         self.mod_wheel = 0
@@ -163,6 +161,17 @@ class MidiToCV:
                 dt = time.perf_counter() - t
 
             await asyncio.sleep(1 / Module.packet_rate)
+
+
+class MidiToCVEventHandler(EventHandler):
+    def __init__(self, app: MidiToCV) -> None:
+        self.app = app
+
+    def patch(self, state: PatchState) -> None:
+        self.app.patching_callback(state)
+
+    def abort(self) -> None:
+        self.app.shutdown()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import asyncio
 import tkinter as tk
 
-from brain import Module
+from brain import Module, EventHandler, PatchState
 
 import logging
 
@@ -17,9 +17,7 @@ class Manager:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = Module(
-            self.name, self.patching_callback, abort_callback=self.shutdown
-        )
+        self.mod = Module(self.name, ManagerEventHandler(self))
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -65,6 +63,17 @@ class Manager:
 
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
+
+
+class ManagerEventHandler(EventHandler):
+    def __init__(self, app: Manager) -> None:
+        self.app = app
+
+    def patch(self, state: PatchState) -> None:
+        self.app.patching_callback(state)
+
+    def abort(self) -> None:
+        self.app.shutdown()
 
 
 if __name__ == "__main__":

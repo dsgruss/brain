@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.lines import Line2D
 
-from brain import Module
+from brain import Module, EventHandler, PatchState
 from common import tkJack
 
 import logging
@@ -27,9 +27,7 @@ class Oscilloscope:
     def __init__(self, loop):
         self.loop = loop
 
-        self.mod = Module(
-            self.name, self.patching_callback, abort_callback=self.shutdown
-        )
+        self.mod = Module(self.name, OscilloscopeEventHandler(self))
         self.data_jack = self.mod.add_input("Data", self.data_callback)
 
         self.ui_setup()
@@ -174,6 +172,17 @@ class Oscilloscope:
                 self.timeseries[0].pop(0)
                 self.dataseries[0].pop(0)
             await asyncio.sleep(1 / 100)
+
+
+class OscilloscopeEventHandler(EventHandler):
+    def __init__(self, app: Oscilloscope) -> None:
+        self.app = app
+
+    def patch(self, state: PatchState) -> None:
+        self.app.patching_callback(state)
+
+    def abort(self) -> None:
+        self.app.shutdown()
 
 
 if __name__ == "__main__":

@@ -9,7 +9,9 @@ import socket
 import uuid
 
 from collections import deque
-from enum import Enum
+from typing import Final
+
+from .interfaces import EventHandler, PatchState
 
 
 class Jack:
@@ -30,6 +32,9 @@ class Jack:
         if self._patch_enabled != state:
             self._patch_enabled = state
             self.parent_module.update_patch()
+
+    def is_patched(self) -> bool:
+        return False
 
 
 class InputJack(Jack):
@@ -173,63 +178,47 @@ class OutputJack(Jack):
         self.connected_jacks.clear()
 
 
-class PatchState(Enum):
-    """Enum used to track a global state over all connected modules"""
-
-    IDLE = 0  #: No buttons pushed across all modules
-    PATCH_ENABLED = 1  #: One single button pushed
-    PATCH_TOGGLED = 2  #: Two buttons pushed, consisting of an input and output
-    BLOCKED = 3  #: Three or more buttons pushed or two of the same type
-
-
 class Module:
     """The ``Module`` object mediates all of the patching and dataflow between all other modules on
     the network. Typically, a module only needs to be written as a processor on the input state to
-    the output state and handle the associated user interface.
+    the output state and handle the associated user interface. Ideally, most of this would be placed
+    on the python module level rather than the class level, but it is included here in order to
+    maintain parity with the C++/static implementation.
 
     :param name: The name of the module
 
-    :param patching_callback: Function called when the global patch state changes
-
-    :param process_callback: Function called for the synchronized processing step
-
-    :param abort_callback: Function called for a global shutdown event
+    :param event_handler: Instance of an ``EventHandler`` used to process application events. The
+        application should either create its own class that inherits from ``EventHandler`` or create
+        a new instance and modify the class methods.
     """
 
     #: Preferred communication subnet in case multiple network interfaces are present
-    preferred_broadcast = "10.255.255.255"
+    preferred_broadcast: Final = "10.255.255.255"
 
     #: Port used to establish the global state and create new patch connections
-    patch_port = 19874
+    patch_port: Final = 19874
 
     #: Frequency in packets per second to send audio and CV data
-    packet_rate = 1000
+    packet_rate: Final = 1000
 
     #: Audio sample rate in Hz (must be a multiple of ``packet_rate``)
-    sample_rate = 48000
+    sample_rate: Final = 48000
 
     #: Number of samples in a full-length packet (``sample_rate`` / ``packet_rate``)
-    block_size = 48
+    block_size: Final = 48
 
     #: Number of independent audio processing channels
-    channels = 8
+    channels: Final = 8
 
     #: Maximum number of states to buffer
-    buffer_size = 100
+    buffer_size: Final = 100
 
     #: Sample data type
-    sample_type = np.int16
+    sample_type: Final = np.int16
 
-    def __init__(
-        self,
-        name: str,
-        patching_callback=None,
-        process_callback=None,
-        abort_callback=None,
-    ):
+    def __init__(self, name: str, event_handler: EventHandler = None):
         self.name = name
-        self.patching_callback = patching_callback
-        self.process_callback = process_callback
+        self.event_handler = event_handler or EventHandler()
         self.uuid = str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
 
@@ -265,14 +254,13 @@ class Module:
             self.broadcast_addr["broadcast"],
             self.patch_port,
             self.update_patch_state,
-            abort_callback,
+            self.abort_callback,
         )
 
     def start(self) -> None:
         """Start listening to directives on the network interface and sending updates"""
 
-        if self.patching_callback is not None:
-            self.patching_callback(self.patch_state)
+        self.event_handler.patch(self.patch_state)
 
         loop = asyncio.get_event_loop()
         loop.create_task(
@@ -309,6 +297,56 @@ class Module:
         self.outputs[jack.id] = jack
         return jack
 
+    def get_patch_state(self) -> PatchState:
+        """Retrieves the global patch state"""
+        return self.patch_state
+
+    def is_patched(self, jack: Jack) -> bool:
+        """Check if a jack is currently connected to a patch
+
+        :param jack: Input or output jack to check
+
+        :return: ``True`` if connected
+        """
+        return jack.is_patched()
+
+    def is_patch_member(self, jack: Jack) -> bool:
+        """During ``PatchState.PATCH_ENABLED``, returns whether a jack is currently patched to the
+        held input or output jack.
+        """
+        return jack.patch_member
+
+    def get_data(self, jack: InputJack) -> np.ndarray:
+        """Pull pending data from the jack. In the event that data is not available, this will
+        return a copy of the last seen packet. Used in response to a ``process_callback``.
+
+        :param jack: Input jack to receive data from
+
+        :return: An array of shape (X, ``Module.channels``) of data type ``Module.sample_type``,
+            where X is the number of samples sent in a packet window"""
+        return jack.get_data()
+
+    def send_data(self, jack: OutputJack, data: np.ndarray) -> None:
+        """Send data through an output jack. Caller is responsible for maintaining packet timing.
+        Currently, this sends data out to the network at all times.
+
+        :param jack: Output jack through which to send
+
+        :param data: An array of shape (X, ``Module.channels``) of data type ``Module.sample_type``,
+            where X is the number of samples sent in a packet window
+        """
+        jack.send(data.tobytes())
+
+    def set_patch_enabled(self, jack: Jack, state: bool) -> None:
+        """Indicate the jack is available for patching (for instance, the patch button is held down)
+        and notify other modules
+
+        :param jack: Input or output jack to set the state
+
+        :param state: Value to set
+        """
+        jack.set_patch_enabled(state)
+
     def update_patch(self) -> None:
         """Triggers an update in the shared global state"""
         s = {
@@ -330,6 +368,9 @@ class Module:
             ],
         }
         self.protocol.update(s)
+
+    def abort_callback(self) -> None:
+        self.event_handler.abort()
 
     def abort_all(self) -> None:
         """Sends an abort directive to all connected modules"""
@@ -387,8 +428,7 @@ class Module:
                 if output["uuid"] == self.uuid:
                     self.toggle_output_connection(input, output)
 
-            if self.patching_callback is not None:
-                self.patching_callback(patch_state)
+            self.event_handler.patch(self.patch_state)
 
     def toggle_input_connection(self, input, output) -> None:
         """Toggles an input connection that is owned by this module, either connecting it to the
@@ -432,20 +472,18 @@ class Module:
         """Callback that determines if data is ready for a synchronized processing step across all of
         the owned input jacks
         """
-        if self.process_callback is None:
-            return
 
         data_available = True
         for jack in self.inputs.values():
             if not jack.is_patched():
                 continue
             if len(jack.data_queue) >= self.buffer_size:
-                self.process_callback()
+                self.event_handler.process()
                 return
             if len(jack.data_queue) == 0:
                 data_available = False
         if data_available:
-            self.process_callback()
+            self.event_handler.process()
 
 
 class DataProtocol(asyncio.DatagramProtocol):

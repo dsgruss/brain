@@ -3,7 +3,7 @@ import numpy as np
 import tkinter as tk
 import time
 
-from brain import Module
+from brain import Module, EventHandler, PatchState
 from common import tkJack
 
 import logging
@@ -24,9 +24,7 @@ class ASREnvelope:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = Module(
-            self.name, self.patching_callback, abort_callback=self.shutdown
-        )
+        self.mod = Module(self.name, ASREnvelopeEventHandler(self))
 
         self.gate_jack = self.mod.add_input("Gate In", self.data_callback)
         self.asr_jack = self.mod.add_output("ASR Envelope", self.color)
@@ -108,6 +106,17 @@ class ASREnvelope:
                 dt = time.perf_counter() - t
 
             await asyncio.sleep(1 / Module.packet_rate)
+
+
+class ASREnvelopeEventHandler(EventHandler):
+    def __init__(self, app: ASREnvelope) -> None:
+        self.app = app
+
+    def patch(self, state: PatchState) -> None:
+        self.app.patching_callback(state)
+
+    def abort(self) -> None:
+        self.app.shutdown()
 
 
 if __name__ == "__main__":

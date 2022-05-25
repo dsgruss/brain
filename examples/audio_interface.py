@@ -6,7 +6,7 @@ import threading
 
 from collections import deque
 
-from brain import Module
+from brain import Module, EventHandler, PatchState
 from common import tkJack
 
 import logging
@@ -64,12 +64,7 @@ class AudioInterface:
 
         logging.info("Using device " + sd.query_devices(default_device)["name"])
 
-        self.mod = Module(
-            self.name,
-            self.patching_callback,
-            process_callback=self.data_callback,
-            abort_callback=self.shutdown,
-        )
+        self.mod = Module(self.name, AudioInterfaceEventHandler(self))
         self.in_jack = self.mod.add_input("Audio In")
         self.level_jack = self.mod.add_input("Level")
 
@@ -148,6 +143,20 @@ class AudioInterface:
             self.level_value = max(level[0, :]) / 16000
         except Empty:
             outdata[:] = np.zeros((Module.block_size, 1))
+
+
+class AudioInterfaceEventHandler(EventHandler):
+    def __init__(self, app: AudioInterface) -> None:
+        self.app = app
+
+    def patch(self, state: PatchState) -> None:
+        self.app.patching_callback(state)
+
+    def process(self) -> None:
+        self.app.data_callback()
+
+    def abort(self) -> None:
+        self.app.shutdown()
 
 
 if __name__ == "__main__":
