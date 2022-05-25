@@ -19,17 +19,34 @@ class Jack:
     def __init__(self, parent_module, name):
         self.parent_module = parent_module
         self.name = name
-        self.id = str(next(Jack.id_iter))
+        self.id = str(next(Jack._id_iter))
 
     def set_patch_enabled(self, state: bool):
-        # Indicate the jack is available for patching and notify other modules
+        """Indicate the jack is available for patching (for instance, the patch button is held down)
+        and notify other modules
+
+        :param state: Value to set
+        """
         if self._patch_enabled != state:
             self._patch_enabled = state
             self.parent_module.update_patch()
 
 
 class InputJack(Jack):
-    def __init__(self, parent_module, data_callback, name):
+    """An input jack which receives data from an output jack over the network. This is not
+    typically instantiated directly but rather through ``Module.add_input``.
+
+    :param parent_module: Reference to the owning ``Module``
+
+    :param name: Identifier describing the input jack
+
+    :param data_callback: Function that is called when new data arrives at the input jack. This
+        callback fires immediately when the data is received, so use ``process_callback`` if a
+        synchronized consumption of multiple inputs is desired (i.e. the signals are not processed
+        independently).
+    """
+
+    def __init__(self, parent_module, name: str, data_callback):
         self.callback = data_callback
         self.data_queue = deque()
         self.last_seen_data = np.zeros(
@@ -40,6 +57,10 @@ class InputJack(Jack):
         super().__init__(parent_module, name)
 
     def is_patched(self) -> bool:
+        """Check if input jack is currently connected to a patch
+
+        :return: ``True`` if connected
+        """
         return self.connected_jack is not None
 
     def clear(self):
@@ -84,7 +105,12 @@ class InputJack(Jack):
         self.data_queue.appendleft(data)
         self.parent_module._check_process()
 
-    def get_data(self):
+    def get_data(self) -> np.ndarray:
+        """Pull pending data from the jack. In the event that data is not available, this will
+        return a copy of the last seen packet. Used in response to a ``process_callback``.
+
+        :return: An array of shape (X, ``Module.channels``) of data type ``Module.sample_type``,
+            where X is the number of samples sent in a packet window"""
         if len(self.data_queue) > 0:
             return self.data_queue.pop()
         else:
@@ -92,7 +118,20 @@ class InputJack(Jack):
 
 
 class OutputJack(Jack):
-    def __init__(self, parent_module, address, name, color):
+    """An output jack which sends data to input jacks over the network. This is not
+    typically instantiated directly but rather through ``Module.add_output``.
+
+    :param parent_module: Reference to the owning ``Module``
+
+    :param address: ip4 address to sink data
+
+    :param name: Identifier describing the output jack
+
+    :param color: An HSV Hue value for the jack's primary color in [0, 360). This color is
+        propagated to any input jacks that it is patched to.
+    """
+
+    def __init__(self, parent_module, address: str, name: str, color: int):
         self.color = color
         self.connected_jacks = set()
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -103,8 +142,12 @@ class OutputJack(Jack):
 
         super().__init__(parent_module, name)
 
-    def send(self, data: bytes):
-        # Currently sending all the data at all times
+    def send(self, data: bytes) -> None:
+        """Send data out through this jack. Caller is responsible for maintaining packet timing.
+        Currently, this sends data out to the network at all times.
+
+        :data: Data to be sent in raw bytes
+        """
         self.sock.sendto(data, self.endpoint)
 
     def connect(self, input_uuid, input_id):
@@ -120,6 +163,10 @@ class OutputJack(Jack):
         self.connected_jacks.discard((input_uuid, input_id))
 
     def is_patched(self) -> bool:
+        """Check if output jack is currently connected to a patch
+
+        :return: ``True`` if connected
+        """
         return len(self.connected_jacks) > 0
 
     def clear(self):
@@ -244,17 +291,17 @@ class Module:
 
         :return: The created jack instance
         """
-        jack = InputJack(self, data_callback, name)
+        jack = InputJack(self, name, data_callback)
         self.inputs[jack.id] = jack
         return jack
 
     def add_output(self, name: str, color: int) -> OutputJack:
         """Adds a new output jack to the module
 
-        :param name: Identifies describing the new jack
+        :param name: Identifier describing the new jack
 
-        :param color: An HSV Hue value for the jack's primary color. This color is propagated to any
-            input jacks that it is patched to.
+        :param color: An HSV Hue value for the jack's primary color in [0, 360). This color is
+            propagated to any input jacks that it is patched to.
 
         :return: The created jack instance
         """
@@ -268,7 +315,7 @@ class Module:
             "inputs": [
                 {"id": jack.id, "type": "input"}
                 for jack in self.inputs.values()
-                if jack.patch_enabled
+                if jack._patch_enabled
             ],
             "outputs": [
                 {
@@ -279,7 +326,7 @@ class Module:
                     "color": jack.color,
                 }
                 for jack in self.outputs.values()
-                if jack.patch_enabled
+                if jack._patch_enabled
             ],
         }
         self.protocol.update(s)

@@ -11,24 +11,17 @@ Welcome to brain's documentation!
    :caption: Contents:
 
 .. autoclass:: brain.Module
-   :members:
-   :undoc-members:
+   :members: start, add_input, add_output, abort_all
 
 .. autoclass:: brain.PatchState
    :members:
    :undoc-members:
 
-.. autoclass:: brain.Jack
-   :members:
-   :undoc-members:
-
 .. autoclass:: brain.InputJack
-   :members:
-   :undoc-members:
+   :members: is_patched, set_patch_enabled, get_data
 
 .. autoclass:: brain.OutputJack
-   :members:
-   :undoc-members:
+   :members: is_patched, set_patch_enabled, send
 
 Indices and tables
 ==================
