@@ -298,10 +298,18 @@ class Module:
                         )
 
             if patch_state == PatchState.PATCH_TOGGLED:
-                if active_inputs[0]["uuid"] == self.uuid:
-                    self.toggle_input_connection(active_inputs[0], active_outputs[0])
-                if active_outputs[0]["uuid"] == self.uuid:
-                    self.toggle_output_connection(active_inputs[0], active_outputs[0])
+                input = active_inputs[0]
+                output = active_outputs[0]
+                for output_jack in self.outputs.values():
+                    if output["uuid"] == self.uuid and output["id"] == output_jack.id:
+                        continue
+                    if output_jack.is_connected(input["uuid"], input["id"]):
+                        output_jack.disconnect(input["uuid"], input["id"])
+
+                if input["uuid"] == self.uuid:
+                    self.toggle_input_connection(input, output)
+                if output["uuid"] == self.uuid:
+                    self.toggle_output_connection(input, output)
 
             if self.patching_callback is not None:
                 self.patching_callback(patch_state)
