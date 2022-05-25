@@ -129,10 +129,10 @@ class OutputJack(Jack):
 class PatchState(Enum):
     """Global state possibilities"""
 
-    IDLE = 0  # No buttons pushed across all modules
-    PATCH_ENABLED = 1  # One single button pushed
-    PATCH_TOGGLED = 2  # Two buttons pushed, consisting of an input and output
-    BLOCKED = 3  # Three or more buttons pushed or two of the same type
+    IDLE = 0  #: No buttons pushed across all modules
+    PATCH_ENABLED = 1  #: One single button pushed
+    PATCH_TOGGLED = 2  #: Two buttons pushed, consisting of an input and output
+    BLOCKED = 3  #: Three or more buttons pushed or two of the same type
 
 
 class Module:
@@ -149,28 +149,28 @@ class Module:
     :param abort_callback: function called for a global shutdown event
     """
 
-    # Preferred communication subnet in case multiple network interfaces are present
+    #: Preferred communication subnet in case multiple network interfaces are present
     preferred_broadcast = "10.255.255.255"
 
-    # Port used to establish the global state and create new patch connections
+    #: Port used to establish the global state and create new patch connections
     patch_port = 19874
 
-    # Frequency in packets per second to send audio and CV data
+    #: Frequency in packets per second to send audio and CV data
     packet_rate = 1000
 
-    # Audio sample rate in Hz (must be a multiple of packet_rate)
+    #: Audio sample rate in Hz (must be a multiple of packet_rate)
     sample_rate = 48000
 
-    # Number of samples in a full-length packet (sample_rate / packet_rate)
+    #: Number of samples in a full-length packet (`sample_rate` / `packet_rate`)
     block_size = 48
 
-    # Number of independent audio processing channels
+    #: Number of independent audio processing channels
     channels = 8
 
-    # Maximum number of states to buffer
+    #: Maximum number of states to buffer
     buffer_size = 100
 
-    # Sample data type
+    #: Sample data type
     sample_type = np.int16
 
     def __init__(
