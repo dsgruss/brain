@@ -13,8 +13,8 @@ from enum import Enum
 
 
 class Jack:
-    patch_enabled = False
-    id_iter = itertools.count()
+    _patch_enabled = False
+    _id_iter = itertools.count()
 
     def __init__(self, parent_module, name):
         self.parent_module = parent_module
@@ -23,8 +23,8 @@ class Jack:
 
     def set_patch_enabled(self, state: bool):
         # Indicate the jack is available for patching and notify other modules
-        if self.patch_enabled != state:
-            self.patch_enabled = state
+        if self._patch_enabled != state:
+            self._patch_enabled = state
             self.parent_module.update_patch()
 
 
@@ -82,7 +82,7 @@ class InputJack(Jack):
         data = data.reshape((len(data) // Module.channels, Module.channels))
         self.last_seen_data = data.copy()
         self.data_queue.appendleft(data)
-        self.parent_module.check_process()
+        self.parent_module._check_process()
 
     def get_data(self):
         if len(self.data_queue) > 0:
@@ -290,7 +290,7 @@ class Module:
 
     def update_patch_state(self, patch_state, active_inputs, active_outputs):
         """Callback used to manages changes in the global state
-        
+
         :param patch_state: The current ``PatchState`` of all modules
 
         :param active_inputs: List of input jacks currently involved in patching
@@ -347,9 +347,9 @@ class Module:
         """Toggles an input connection that is owned by this module, either connecting it to the
         given output or disconnecting it if it is already connected. This operation only updates the
         local state of the input jack, rather than triggering an update across all modules.
-        
+
         :param input: The input jack to be toggled
-        
+
         :param output: The external output jack to connect to or disconnect from
         """
         input_jack = self.inputs[input["id"]]
@@ -369,9 +369,9 @@ class Module:
         """Toggles an output connection that is owned by this module, either connecting it to the
         given input or disconnecting it if it is already connected. This operation only updates the
         local state of the output jack, rather than triggering an update across all modules.
-        
+
         :param input: The external input back to connect to or disconnect from
-        
+
         :param output: The output jack to be toggled
         """
         output_jack = self.outputs[output["id"]]
@@ -381,7 +381,7 @@ class Module:
         else:
             output_jack.connect(input_uuid, input_id)
 
-    def check_process(self) -> None:
+    def _check_process(self) -> None:
         """Callback that determines if data is ready for a synchronized processing step across all of
         the owned input jacks
         """
