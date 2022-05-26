@@ -36,8 +36,7 @@ class ASREnvelope:
         self.level = [0] * Module.channels
 
         loop.create_task(self.output_task())
-
-        loop.run_until_complete(self.mod.start())
+        loop.create_task(self.module_task())
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -61,6 +60,11 @@ class ASREnvelope:
         result = result.reshape((len(result) // Module.channels, Module.channels))
         for i in range(Module.channels):
             self.gates[i] = result[0, i]
+
+    async def module_task(self):
+        while True:
+            self.mod.update()
+            await asyncio.sleep(1 / self.mod.packet_rate)
 
     async def ui_task(self, interval=(1 / 60)):
         while True:

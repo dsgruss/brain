@@ -40,7 +40,7 @@ class Oscilloscope:
         # loop.create_task(self.sin_wave())
         # loop.create_task(self.triangle_wave())
 
-        loop.run_until_complete(self.mod.start())
+        loop.create_task(self.module_task())
 
     def data_callback(self, data):
         result = np.frombuffer(data, dtype=Module.sample_type)
@@ -115,6 +115,11 @@ class Oscilloscope:
         for task in asyncio.all_tasks():
             task.cancel()
         asyncio.ensure_future(self.quit())
+
+    async def module_task(self):
+        while True:
+            self.mod.update()
+            await asyncio.sleep(1 / self.mod.packet_rate)
 
     async def quit(self):
         self.loop.stop()

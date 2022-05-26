@@ -1,10 +1,7 @@
-import asyncio
 import itertools
 import logging
 import netifaces
 import numpy as np
-import random
-import socket
 import uuid
 
 from collections import deque
@@ -20,7 +17,7 @@ from .interfaces import (
     PatchState,
 )
 from .parsers import Message, MessageType
-from .servers import DataProtocol, PatchProtocol
+from .servers import InputJackListener, OutputJackServer, PatchServer
 
 
 class Jack:
@@ -61,6 +58,7 @@ class InputJack(Jack):
             (Module.block_size, Module.channels), dtype=Module.sample_type
         )
         self.connected_jack = None
+        self.jack_listener = InputJackListener(self.proto_callback)
 
         super().__init__(name)
 
@@ -73,8 +71,6 @@ class InputJack(Jack):
 
     def clear(self):
         if self.is_patched():
-            self.endpoint.close()
-            self.sock.close()
             self.connected_jack = None
 
     def disconnect(self, output_uuid, output_id):
@@ -93,16 +89,10 @@ class InputJack(Jack):
         self.color = output_color
         self.connected_jack = (output_uuid, output_id)
 
-        self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
-        self.sock.bind((address, port))
+        self.jack_listener.connect(address, port)
 
-        self.protocol = DataProtocol(self.proto_callback)
-        loop = asyncio.get_event_loop()
-        self.endpoint = loop.create_datagram_endpoint(
-            lambda: self.protocol, sock=self.sock
-        )
-        loop.create_task(self.endpoint)
+    def update(self):
+        self.jack_listener.update()
 
     def proto_callback(self, data):
         if self.callback is not None:
@@ -146,11 +136,8 @@ class OutputJack(Jack):
     def __init__(self, address: str, name: str, color: int):
         self.color = color
         self.connected_jacks: Set[Tuple[str, str]] = set()
-        self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-
-        # For now we just pick a port, but this should be negotiated during device discovery
-        self.endpoint = (address, random.randrange(49152, 65535))
-        logging.info("Jack endpoint: " + str(self.endpoint))
+        self.jack_server = OutputJackServer(address)
+        self.endpoint = self.jack_server.endpoint
 
         super().__init__(name)
 
@@ -160,7 +147,7 @@ class OutputJack(Jack):
 
         :data: Data to be sent in raw bytes
         """
-        self.sock.sendto(data, self.endpoint)
+        self.jack_server.datagram_send(data)
 
     def connect(self, input_uuid, input_id):
         self.connected_jacks.add((input_uuid, input_id))
@@ -252,31 +239,21 @@ class Module:
             if detail["broadcast"] == self.preferred_broadcast:
                 self.broadcast_addr = detail
 
-        # The socket is created manually here because the handler doesn't appear to appear to allow
-        # an address reuse, even though we are using a broadcast
-
-        self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
-        self.sock.bind((self.broadcast_addr["addr"], self.patch_port))
-
-        self.protocol = PatchProtocol(
+        self.patch_server = PatchServer(
             self.uuid,
-            self.broadcast_addr["broadcast"],
+            self.broadcast_addr,
             self.patch_port,
             self.event_callback,
         )
 
-    async def start(self):
-        """Start listening to directives on the network interface and sending updates"""
-
-        self.event_handler.patch(self.get_patch_state())
-
-        loop = asyncio.get_event_loop()
-        transport, protocol = await loop.create_datagram_endpoint(
-            lambda: self.protocol, sock=self.sock
-        )
-
-        return transport
+    def update(self):
+        """Process all pending tasks: send and recieve directives, audio and control data and
+        perform callbacks if requested. This should be run periodically in an event loop or a
+        thread.
+        """
+        self.patch_server.update()
+        for jack in self.inputs.values():
+            jack.update()
 
     def add_input(self, name: str, data_callback=None) -> InputJack:
         """Adds a new input jack to the module
@@ -380,7 +357,7 @@ class Module:
             for jack in self.outputs.values()
             if jack.patch_enabled
         ]
-        self.protocol.message_send(
+        self.patch_server.message_send(
             Message(
                 self.uuid, MessageType.UPDATE, LocalState(held_inputs, held_outputs)
             )
@@ -394,7 +371,7 @@ class Module:
 
     def halt_all(self) -> None:
         """Sends a halt directive to all connected modules"""
-        self.protocol.message_send(Message("GLOBAL", MessageType.HALT))
+        self.patch_server.message_send(Message("GLOBAL", MessageType.HALT))
 
     def update_patch_state(self):
         """Callback used to manages changes in the global state"""

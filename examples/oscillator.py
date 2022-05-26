@@ -36,8 +36,7 @@ class Oscillator:
         loop.create_task(self.ui_task())
 
         loop.create_task(self.output_task())
-
-        loop.run_until_complete(self.mod.start())
+        loop.create_task(self.module_task())
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -84,6 +83,11 @@ class Oscillator:
             except tk.TclError:
                 self.shutdown()
                 break
+
+    async def module_task(self):
+        while True:
+            self.mod.update()
+            await asyncio.sleep(1 / self.mod.packet_rate)
 
     def shutdown(self):
         for task in asyncio.all_tasks():
