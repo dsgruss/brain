@@ -55,7 +55,7 @@ class MidiToCV:
         self.loop.create_task(self.ui_task())
 
         self.loop.create_task(self.output_task())
-        self.mod.start()
+        loop.run_until_complete(self.mod.start())
 
     def ui_setup(self):
         self.root = tk.Tk()

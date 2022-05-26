@@ -24,10 +24,10 @@ class Jack:
         self.id: Final = str(next(Jack._id_iter))
 
     def is_patched(self) -> bool:
-        raise NotImplemented
+        raise NotImplementedError
 
     def get_color(self) -> int:
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class InputJack(Jack):
@@ -258,15 +258,17 @@ class Module:
             self.halt_callback,
         )
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start listening to directives on the network interface and sending updates"""
 
         self.event_handler.patch(self.patch_state)
 
         loop = asyncio.get_event_loop()
-        loop.create_task(
-            loop.create_datagram_endpoint(lambda: self.protocol, sock=self.sock)
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: self.protocol, sock=self.sock
         )
+
+        return transport
 
     def add_input(self, name: str, data_callback=None) -> InputJack:
         """Adds a new input jack to the module

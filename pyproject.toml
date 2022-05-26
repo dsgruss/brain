@@ -14,7 +14,6 @@ pyreadline = "^2.1"
 netifaces = "^0.11.0"
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.2"
 ipython = "^7.26.0"
 black = "^21.7b0"
 matplotlib = "^3.5.2"
@@ -24,6 +23,8 @@ scipy = "^1.8.1"
 Sphinx = "^4.5.0"
 sphinx-rtd-theme = "^1.0.0"
 mypy = "^0.960"
+pytest = "^7.1.2"
+pytest-asyncio = "^0.18.3"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -40,7 +40,7 @@ class Oscilloscope:
         # loop.create_task(self.sin_wave())
         # loop.create_task(self.triangle_wave())
 
-        self.mod.start()
+        loop.run_until_complete(self.mod.start())
 
     def data_callback(self, data):
         result = np.frombuffer(data, dtype=Module.sample_type)
