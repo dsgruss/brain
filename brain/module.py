@@ -1,6 +1,5 @@
 import asyncio
 import itertools
-import json
 import logging
 import netifaces
 import numpy as np
@@ -11,7 +10,17 @@ import uuid
 from collections import deque
 from typing import Dict, Final, Set, Tuple
 
-from .interfaces import EventHandler, PatchState
+from .interfaces import (
+    EventHandler,
+    GlobalState,
+    HeldInputJack,
+    HeldOutputJack,
+    LocalState,
+    ModuleUuid,
+    PatchState,
+)
+from .parsers import Message, MessageType
+from .servers import DataProtocol, PatchProtocol
 
 
 class Jack:
@@ -88,7 +97,7 @@ class InputJack(Jack):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
         self.sock.bind((address, port))
 
-        self.protocol = DataProtocol(self)
+        self.protocol = DataProtocol(self.proto_callback)
         loop = asyncio.get_event_loop()
         self.endpoint = loop.create_datagram_endpoint(
             lambda: self.protocol, sock=self.sock
@@ -220,8 +229,8 @@ class Module:
     def __init__(self, name: str, event_handler: EventHandler = None):
         self.name = name
         self.event_handler = event_handler or EventHandler()
-        self.uuid = str(uuid.uuid4())
-        self.patch_state = PatchState.IDLE
+        self.uuid: ModuleUuid = str(uuid.uuid4())
+        self.global_state = GlobalState(PatchState.IDLE, {}, {})
 
         self.inputs: Dict[str, InputJack] = {}
         self.outputs: Dict[str, OutputJack] = {}
@@ -254,14 +263,13 @@ class Module:
             self.uuid,
             self.broadcast_addr["broadcast"],
             self.patch_port,
-            self.update_patch_state,
-            self.halt_callback,
+            self.event_callback,
         )
 
-    async def start(self) -> None:
+    async def start(self):
         """Start listening to directives on the network interface and sending updates"""
 
-        self.event_handler.patch(self.patch_state)
+        self.event_handler.patch(self.get_patch_state())
 
         loop = asyncio.get_event_loop()
         transport, protocol = await loop.create_datagram_endpoint(
@@ -306,7 +314,7 @@ class Module:
 
     def get_patch_state(self) -> PatchState:
         """Retrieves the global patch state"""
-        return self.patch_state
+        return self.global_state.patch_state
 
     def is_input(self, jack: Jack) -> bool:
         """Check if given jack is an input jack"""
@@ -362,45 +370,51 @@ class Module:
 
     def update_patch(self) -> None:
         """Triggers an update in the shared global state"""
-        s = {
-            "inputs": [
-                {"id": jack.id, "type": "input"}
-                for jack in self.inputs.values()
-                if jack.patch_enabled
-            ],
-            "outputs": [
-                {
-                    "id": jack.id,
-                    "type": "output",
-                    "address": jack.endpoint[0],
-                    "port": jack.endpoint[1],
-                    "color": jack.color,
-                }
-                for jack in self.outputs.values()
-                if jack.patch_enabled
-            ],
-        }
-        self.protocol.update(s)
+        held_inputs = [
+            HeldInputJack(self.uuid, jack.id)
+            for jack in self.inputs.values()
+            if jack.patch_enabled
+        ]
+        held_outputs = [
+            HeldOutputJack(self.uuid, jack.id, jack.color, jack.endpoint[1])
+            for jack in self.outputs.values()
+            if jack.patch_enabled
+        ]
+        self.protocol.message_send(
+            Message(
+                self.uuid, MessageType.UPDATE, LocalState(held_inputs, held_outputs)
+            )
+        )
+        self.global_state.held_inputs[self.uuid] = held_inputs
+        self.global_state.held_outputs[self.uuid] = held_outputs
+        self.update_patch_state()
 
     def halt_callback(self) -> None:
         self.event_handler.halt()
 
     def halt_all(self) -> None:
         """Sends a halt directive to all connected modules"""
-        self.protocol.halt_all()
+        self.protocol.message_send(Message("GLOBAL", MessageType.HALT))
 
-    def update_patch_state(self, patch_state, active_inputs, active_outputs):
-        """Callback used to manages changes in the global state
+    def update_patch_state(self):
+        """Callback used to manages changes in the global state"""
+        active_inputs = list(itertools.chain(*self.global_state.held_inputs.values()))
+        active_outputs = list(itertools.chain(*self.global_state.held_outputs.values()))
+        total_inputs = len(active_inputs)
+        total_outputs = len(active_outputs)
 
-        :param patch_state: The current ``PatchState`` of all modules
+        if total_inputs >= 2 or total_outputs >= 2:
+            patch_state = PatchState.BLOCKED
+        elif total_inputs == 1 and total_outputs == 1:
+            patch_state = PatchState.PATCH_TOGGLED
+        elif total_inputs == 1 or total_outputs == 1:
+            patch_state = PatchState.PATCH_ENABLED
+        else:
+            patch_state = PatchState.IDLE
 
-        :param active_inputs: List of input jacks currently involved in patching
-
-        :param active_outputs: List of output jacks currently involved in patching
-        """
-        if self.patch_state != patch_state:
-            self.patch_state = patch_state
-            logging.info(patch_state)
+        if self.global_state.patch_state != patch_state:
+            self.global_state.patch_state = patch_state
+            logging.info("global_state: " + str(self.global_state))
 
             for jack in self.inputs.values():
                 jack.patch_member = False
@@ -408,18 +422,18 @@ class Module:
                 jack.patch_member = False
 
             if patch_state == PatchState.PATCH_ENABLED:
-                if len(active_inputs) == 1:
-                    held_input_uuid = active_inputs[0]["uuid"]
-                    held_input_id = active_inputs[0]["id"]
+                if total_inputs == 1:
+                    held_input_uuid = active_inputs[0].uuid
+                    held_input_id = active_inputs[0].id
                     if self.uuid == held_input_uuid:
                         self.inputs[held_input_id].patch_member = True
                     for jack in self.outputs.values():
                         jack.patch_member = jack.is_connected(
                             held_input_uuid, held_input_id
                         )
-                elif len(active_outputs) == 1:
-                    held_output_uuid = active_outputs[0]["uuid"]
-                    held_output_id = active_outputs[0]["id"]
+                elif total_outputs == 1:
+                    held_output_uuid = active_outputs[0].uuid
+                    held_output_id = active_outputs[0].id
                     if self.uuid == held_output_uuid:
                         self.outputs[held_output_id].patch_member = True
                     for jack in self.inputs.values():
@@ -431,17 +445,17 @@ class Module:
                 input = active_inputs[0]
                 output = active_outputs[0]
                 for output_jack in self.outputs.values():
-                    if output["uuid"] == self.uuid and output["id"] == output_jack.id:
+                    if output.uuid == self.uuid and output.id == output_jack.id:
                         continue
-                    if output_jack.is_connected(input["uuid"], input["id"]):
-                        output_jack.disconnect(input["uuid"], input["id"])
+                    if output_jack.is_connected(input.uuid, input.id):
+                        output_jack.disconnect(input.uuid, input.id)
 
-                if input["uuid"] == self.uuid:
+                if input.uuid == self.uuid:
                     self.toggle_input_connection(input, output)
-                if output["uuid"] == self.uuid:
+                if output.uuid == self.uuid:
                     self.toggle_output_connection(input, output)
 
-            self.event_handler.patch(self.patch_state)
+            self.event_handler.patch(patch_state)
 
     def toggle_input_connection(self, input, output) -> None:
         """Toggles an input connection that is owned by this module, either connecting it to the
@@ -452,17 +466,17 @@ class Module:
 
         :param output: The external output jack to connect to or disconnect from
         """
-        input_jack = self.inputs[input["id"]]
-        output_uuid, output_id = output["uuid"], output["id"]
+        input_jack = self.inputs[input.id]
+        output_uuid, output_id = output.uuid, output.id
         if input_jack.is_connected(output_uuid, output_id):
             input_jack.disconnect(output_uuid, output_id)
         else:
             input_jack.connect(
                 self.broadcast_addr["addr"],
-                output["port"],
-                output["color"],
-                output["uuid"],
-                output["id"],
+                output.port,
+                output.color,
+                output.uuid,
+                output.id,
             )
 
     def toggle_output_connection(self, input, output) -> None:
@@ -474,8 +488,8 @@ class Module:
 
         :param output: The output jack to be toggled
         """
-        output_jack = self.outputs[output["id"]]
-        input_uuid, input_id = input["uuid"], input["id"]
+        output_jack = self.outputs[output.id]
+        input_uuid, input_id = input.uuid, input.id
         if output_jack.is_connected(input_uuid, input_id):
             output_jack.disconnect(input_uuid, input_id)
         else:
@@ -498,94 +512,16 @@ class Module:
         if data_available:
             self.event_handler.process()
 
+    def event_callback(self, message: Message):
+        if message.type == MessageType.HALT:
+            self.halt_callback()
+        if message.type == MessageType.UPDATE:
+            if message.local_state is not None:
+                self.global_state.held_inputs[
+                    message.uuid
+                ] = message.local_state.held_inputs
+                self.global_state.held_outputs[
+                    message.uuid
+                ] = message.local_state.held_outputs
 
-class DataProtocol(asyncio.DatagramProtocol):
-    def __init__(self, jack) -> None:
-        self.jack = jack
-
-        super().__init__()
-
-    def connection_made(self, transport):
-        self.transport = transport
-
-    def datagram_received(self, data: bytes, addr) -> None:
-        self.jack.proto_callback(data)
-
-
-class PatchProtocol(asyncio.DatagramProtocol):
-    def __init__(
-        self, uuid, broadcast_addr, port, state_callback, halt_callback
-    ) -> None:
-        self.uuid = uuid
-        self.broadcast_addr = broadcast_addr
-        self.port = port
-        self.state_callback = state_callback
-        self.halt_callback = halt_callback
-
-        self.states = {uuid: {"inputs": [], "outputs": []}}
-
-        super().__init__()
-
-    def connection_made(self, transport):
-        logging.info("Patching broadcast connection made")
-        self.transport = transport
-
-    def datagram_send(self, json_msg):
-        logging.info(
-            "=> " + str((self.broadcast_addr, self.port)) + ": " + str(json_msg)
-        )
-        payload = bytes(json.dumps(json_msg), "utf8")
-        self.transport.sendto(payload, (self.broadcast_addr, self.port))
-
-    def update(self, local_state):
-        # Updates the local state and triggers a global check-in
-        self.states[self.uuid] = local_state
-        self.datagram_send(
-            {"message": "UPDATE", "uuid": self.uuid, "state": local_state}
-        )
-        self.push_update()
-
-    def halt_all(self):
-        self.datagram_send({"message": "HALT", "uuid": "GLOBAL"})
-
-    def push_update(self):
-        active_inputs = []
-        active_outputs = []
-        for uuid, full_state in self.states.items():
-            for state in full_state["inputs"]:
-                a = state.copy()
-                a["uuid"] = uuid
-                active_inputs.append(a)
-            for state in full_state["outputs"]:
-                a = state.copy()
-                a["uuid"] = uuid
-                active_outputs.append(a)
-        logging.info("Global state: " + str(active_inputs) + " " + str(active_outputs))
-
-        if len(active_inputs) >= 2 or len(active_outputs) >= 2:
-            patch_state = PatchState.BLOCKED
-        elif len(active_inputs) == 1 and len(active_outputs) == 1:
-            patch_state = PatchState.PATCH_TOGGLED
-        elif len(active_inputs) + len(active_outputs) == 1:
-            patch_state = PatchState.PATCH_ENABLED
-        else:
-            patch_state = PatchState.IDLE
-        self.state_callback(patch_state, active_inputs, active_outputs)
-
-    def datagram_received(self, data: bytes, addr) -> None:
-        try:
-            response = json.loads(data)
-        except json.JSONDecodeError:
-            return
-        if any(k not in response for k in ("message", "uuid")):
-            return
-        if response["uuid"] == self.uuid:
-            return
-
-        logging.info("<= " + str(response))
-        if response["message"] == "UPDATE":
-            self.states[response["uuid"]] = response["state"]
-            self.push_update()
-        if response["message"] == "HALT":
-            if self.halt_callback is not None:
-                self.halt_callback()
+                self.update_patch_state()
