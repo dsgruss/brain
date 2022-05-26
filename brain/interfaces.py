@@ -30,6 +30,3 @@ class EventHandler:
     def halt(self) -> None:
         """Shutdown directive"""
         pass
-
-
-JackID = NewType("JackID", str)
