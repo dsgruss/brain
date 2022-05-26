@@ -1,5 +1,4 @@
 from enum import auto, Enum
-from typing import NewType
 
 
 class PatchState(Enum):

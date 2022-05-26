@@ -16,16 +16,18 @@ from .interfaces import EventHandler, PatchState
 
 class Jack:
     patch_enabled = False
+    patch_member = False
     _id_iter = itertools.count()
 
-    def __init__(self, parent_module, name):
-        self.parent_module = parent_module
-        self.name = name
-        self.id = str(next(Jack._id_iter))
-        self.patch_member = False
+    def __init__(self, name: str):
+        self.name: Final = name
+        self.id: Final = str(next(Jack._id_iter))
 
     def is_patched(self) -> bool:
-        return False
+        raise NotImplemented
+
+    def get_color(self) -> int:
+        raise NotImplemented
 
 
 class InputJack(Jack):
@@ -43,6 +45,7 @@ class InputJack(Jack):
     """
 
     def __init__(self, parent_module, name: str, data_callback):
+        self.parent_module = parent_module
         self.callback = data_callback
         self.data_queue = deque()
         self.last_seen_data = np.zeros(
@@ -50,7 +53,7 @@ class InputJack(Jack):
         )
         self.connected_jack = None
 
-        super().__init__(parent_module, name)
+        super().__init__(name)
 
     def is_patched(self) -> bool:
         """Check if input jack is currently connected to a patch
@@ -123,8 +126,6 @@ class OutputJack(Jack):
     """An output jack which sends data to input jacks over the network. This is not
     typically instantiated directly but rather through ``Module.add_output``.
 
-    :param parent_module: Reference to the owning ``Module``
-
     :param address: ip4 address to sink data
 
     :param name: Identifier describing the output jack
@@ -133,7 +134,7 @@ class OutputJack(Jack):
         propagated to any input jacks that it is patched to.
     """
 
-    def __init__(self, parent_module, address: str, name: str, color: int):
+    def __init__(self, address: str, name: str, color: int):
         self.color = color
         self.connected_jacks: Set[Tuple[str, str]] = set()
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -142,7 +143,7 @@ class OutputJack(Jack):
         self.endpoint = (address, random.randrange(49152, 65535))
         logging.info("Jack endpoint: " + str(self.endpoint))
 
-        super().__init__(parent_module, name)
+        super().__init__(name)
 
     def send(self, data: bytes) -> None:
         """Send data out through this jack. Caller is responsible for maintaining packet timing.
@@ -293,7 +294,7 @@ class Module:
 
         :return: The created jack instance
         """
-        jack = OutputJack(self, self.broadcast_addr["broadcast"], name, color)
+        jack = OutputJack(self.broadcast_addr["broadcast"], name, color)
         self.outputs[jack.id] = jack
         return jack
 
