@@ -9,9 +9,9 @@ import socket
 import uuid
 
 from collections import deque
-from typing import Final
+from typing import Dict, Final, Set, Tuple
 
-from .interfaces import EventHandler, PatchState
+from .interfaces import EventHandler, JackID, PatchState
 
 
 class Jack:
@@ -22,6 +22,7 @@ class Jack:
         self.parent_module = parent_module
         self.name = name
         self.id = str(next(Jack._id_iter))
+        self.patch_member = False
 
     def set_patch_enabled(self, state: bool):
         """Indicate the jack is available for patching (for instance, the patch button is held down)
@@ -138,7 +139,7 @@ class OutputJack(Jack):
 
     def __init__(self, parent_module, address: str, name: str, color: int):
         self.color = color
-        self.connected_jacks = set()
+        self.connected_jacks: Set[Tuple[str, str]] = set()
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
         # For now we just pick a port, but this should be negotiated during device discovery
@@ -222,8 +223,8 @@ class Module:
         self.uuid = str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
 
-        self.inputs = {}
-        self.outputs = {}
+        self.inputs: Dict[JackID, InputJack] = {}
+        self.outputs: Dict[JackID, OutputJack] = {}
         self.broadcast_addr = None
 
         addresses = []
@@ -267,7 +268,7 @@ class Module:
             loop.create_datagram_endpoint(lambda: self.protocol, sock=self.sock)
         )
 
-    def add_input(self, name: str, data_callback=None) -> InputJack:
+    def add_input(self, name: str, data_callback=None) -> JackID:
         """Adds a new input jack to the module
 
         :param name: Identifier describing the new jack
@@ -281,9 +282,9 @@ class Module:
         """
         jack = InputJack(self, name, data_callback)
         self.inputs[jack.id] = jack
-        return jack
+        return jack.id
 
-    def add_output(self, name: str, color: int) -> OutputJack:
+    def add_output(self, name: str, color: int) -> JackID:
         """Adds a new output jack to the module
 
         :param name: Identifier describing the new jack
@@ -295,28 +296,45 @@ class Module:
         """
         jack = OutputJack(self, self.broadcast_addr["broadcast"], name, color)
         self.outputs[jack.id] = jack
-        return jack
+        return jack.id
+
+    def get_jack_color(self, jack: JackID) -> int:
+        """Returns the assigned HSV hue of the jack"""
+        if jack in self.outputs:
+            return self.outputs[jack].color
+        else:
+            return self.inputs[jack].color
 
     def get_patch_state(self) -> PatchState:
         """Retrieves the global patch state"""
         return self.patch_state
 
-    def is_patched(self, jack: Jack) -> bool:
+    def is_input(self, jack: JackID) -> bool:
+        """Check if given jack is an input jack"""
+        return jack in self.inputs
+
+    def is_patched(self, jack: JackID) -> bool:
         """Check if a jack is currently connected to a patch
 
         :param jack: Input or output jack to check
 
         :return: ``True`` if connected
         """
-        return jack.is_patched()
+        if jack in self.outputs:
+            return self.outputs[jack].is_patched()
+        else:
+            return self.inputs[jack].is_patched()
 
-    def is_patch_member(self, jack: Jack) -> bool:
+    def is_patch_member(self, jack: JackID) -> bool:
         """During ``PatchState.PATCH_ENABLED``, returns whether a jack is currently patched to the
         held input or output jack.
         """
-        return jack.patch_member
+        if jack in self.outputs:
+            return self.outputs[jack].patch_member
+        else:
+            return self.inputs[jack].patch_member
 
-    def get_data(self, jack: InputJack) -> np.ndarray:
+    def get_data(self, jack: JackID) -> np.ndarray:
         """Pull pending data from the jack. In the event that data is not available, this will
         return a copy of the last seen packet. Used in response to a ``process_callback``.
 
@@ -324,9 +342,9 @@ class Module:
 
         :return: An array of shape (X, ``Module.channels``) of data type ``Module.sample_type``,
             where X is the number of samples sent in a packet window"""
-        return jack.get_data()
+        return self.inputs[jack].get_data()
 
-    def send_data(self, jack: OutputJack, data: np.ndarray) -> None:
+    def send_data(self, jack: JackID, data: np.ndarray) -> None:
         """Send data through an output jack. Caller is responsible for maintaining packet timing.
         Currently, this sends data out to the network at all times.
 
@@ -335,9 +353,9 @@ class Module:
         :param data: An array of shape (X, ``Module.channels``) of data type ``Module.sample_type``,
             where X is the number of samples sent in a packet window
         """
-        jack.send(data.tobytes())
+        self.outputs[jack].send(data.tobytes())
 
-    def set_patch_enabled(self, jack: Jack, state: bool) -> None:
+    def set_patch_enabled(self, jack: JackID, state: bool) -> None:
         """Indicate the jack is available for patching (for instance, the patch button is held down)
         and notify other modules
 
@@ -345,7 +363,10 @@ class Module:
 
         :param state: Value to set
         """
-        jack.set_patch_enabled(state)
+        if jack in self.outputs:
+            self.outputs[jack].set_patch_enabled(state)
+        else:
+            self.inputs[jack].set_patch_enabled(state)
 
     def update_patch(self) -> None:
         """Triggers an update in the shared global state"""

@@ -49,15 +49,15 @@ class Oscillator:
 
         self.root.title(self.name)
 
-        self.note_tkjack = tkJack(self.root, self.note_jack, "Note In")
+        self.note_tkjack = tkJack(self.root, self.mod, self.note_jack, "Note In")
         self.note_tkjack.place(x=10, y=50)
-        self.sin_tkjack = tkJack(self.root, self.sin_jack, "Sin")
+        self.sin_tkjack = tkJack(self.root, self.mod, self.sin_jack, "Sin")
         self.sin_tkjack.place(x=10, y=130)
-        self.tri_tkjack = tkJack(self.root, self.tri_jack, "Tri")
+        self.tri_tkjack = tkJack(self.root, self.mod, self.tri_jack, "Tri")
         self.tri_tkjack.place(x=10, y=170)
-        self.saw_tkjack = tkJack(self.root, self.saw_jack, "Saw")
+        self.saw_tkjack = tkJack(self.root, self.mod, self.saw_jack, "Saw")
         self.saw_tkjack.place(x=10, y=210)
-        self.sqr_tkjack = tkJack(self.root, self.sqr_jack, "Sqr")
+        self.sqr_tkjack = tkJack(self.root, self.mod, self.sqr_jack, "Sqr")
         self.sqr_tkjack.place(x=10, y=250)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
@@ -163,10 +163,10 @@ class Oscillator:
                         if wavetable_pos[i] >= wavetable_size:
                             wavetable_pos[i] -= wavetable_size
 
-                self.sin_jack.send(sin_output.tobytes())
-                self.tri_jack.send(tri_output.tobytes())
-                self.saw_jack.send(saw_output.tobytes())
-                self.sqr_jack.send(sqr_output.tobytes())
+                self.mod.send_data(self.sin_jack, sin_output)
+                self.mod.send_data(self.tri_jack, tri_output)
+                self.mod.send_data(self.saw_jack, saw_output)
+                self.mod.send_data(self.sqr_jack, sqr_output)
                 t += 1 / Module.packet_rate
                 dt = time.perf_counter() - t
 

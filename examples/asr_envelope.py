@@ -49,9 +49,9 @@ class ASREnvelope:
 
         self.root.title(self.name)
 
-        self.gate_tkjack = tkJack(self.root, self.gate_jack, "Gate In")
+        self.gate_tkjack = tkJack(self.root, self.mod, self.gate_jack, "Gate In")
         self.gate_tkjack.place(x=10, y=50)
-        self.asr_tkjack = tkJack(self.root, self.asr_jack, "ASR Envelope")
+        self.asr_tkjack = tkJack(self.root, self.mod, self.asr_jack, "ASR Envelope")
         self.asr_tkjack.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
@@ -101,7 +101,7 @@ class ASREnvelope:
                         self.level[i] = max(v, self.level[i] - rstep)
                     output[0, i] = round(self.level[i])
 
-                self.asr_jack.send(output.tobytes())
+                self.mod.send_data(self.asr_jack, output)
                 t += 1 / Module.packet_rate
                 dt = time.perf_counter() - t
 

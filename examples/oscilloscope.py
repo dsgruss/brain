@@ -62,7 +62,7 @@ class Oscilloscope:
 
         self.root.title(self.name)
 
-        self.data_tkjack = tkJack(self.root, self.data_jack, "Data")
+        self.data_tkjack = tkJack(self.root, self.mod, self.data_jack, "Data")
         self.data_tkjack.place(x=10, y=400)
 
         dpi = 80

@@ -97,16 +97,16 @@ class AudioInterface:
 
         self.root.title(self.name)
 
-        self.in_tkjack = tkJack(self.root, self.in_jack, "Audio In")
+        self.in_tkjack = tkJack(self.root, self.mod, self.in_jack, "Audio In")
         self.in_tkjack.place(x=10, y=50)
-        self.level_tkjack = tkJack(self.root, self.level_jack, "Level")
+        self.level_tkjack = tkJack(self.root, self.mod, self.level_jack, "Level")
         self.level_tkjack.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     def data_callback(self):
-        self.audio_buffer.put(self.in_jack.get_data())
-        self.level_buffer.put(self.level_jack.get_data())
+        self.audio_buffer.put(self.mod.get_data(self.in_jack))
+        self.level_buffer.put(self.mod.get_data(self.level_jack))
 
     async def ui_task(self, interval=(1 / 60)):
         while True:

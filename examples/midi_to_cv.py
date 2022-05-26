@@ -67,12 +67,12 @@ class MidiToCV:
 
         self.root.title(self.name)
 
-        self.note_tkjack = tkJack(self.root, self.note_jack, "Note")
+        self.note_tkjack = tkJack(self.root, self.mod, self.note_jack, "Note")
         self.note_tkjack.place(x=10, y=50)
-        self.gate_tkjack = tkJack(self.root, self.gate_jack, "Gate")
+        self.gate_tkjack = tkJack(self.root, self.mod, self.gate_jack, "Gate")
         self.gate_tkjack.place(x=10, y=90)
 
-        self.mdwh_tkjack = tkJack(self.root, self.mdwh_jack, "Mod Wheel")
+        self.mdwh_tkjack = tkJack(self.root, self.mod, self.mdwh_jack, "Mod Wheel")
         self.mdwh_tkjack.place(x=10, y=130)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
@@ -154,9 +154,9 @@ class MidiToCV:
                     gate_data[0, i] = 16000 if v.on else 0
                     mdwh_data[0, i] = self.mod_wheel * 256
 
-                self.note_jack.send(voct_data.tobytes())
-                self.gate_jack.send(gate_data.tobytes())
-                self.mdwh_jack.send(mdwh_data.tobytes())
+                self.mod.send_data(self.note_jack, voct_data)
+                self.mod.send_data(self.gate_jack, gate_data)
+                self.mod.send_data(self.mdwh_jack, mdwh_data)
                 t += 1 / Module.packet_rate
                 dt = time.perf_counter() - t
 

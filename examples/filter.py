@@ -44,9 +44,9 @@ class Filter:
 
         self.root.title(self.name)
 
-        self.in_tkjack = tkJack(self.root, self.in_jack, "Audio In")
+        self.in_tkjack = tkJack(self.root, self.mod, self.in_jack, "Audio In")
         self.in_tkjack.place(x=10, y=50)
-        self.out_tkjack = tkJack(self.root, self.out_jack, "Audio Out")
+        self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Audio Out")
         self.out_tkjack.place(x=10, y=170)
 
         self.slide_val = tk.DoubleVar()
@@ -63,7 +63,7 @@ class Filter:
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     def data_callback(self):
-        initial = self.in_jack.get_data()
+        initial = self.mod.get_data(self.in_jack)
         self.filter_val += 0.025 * (self.slide_val.get() - self.filter_val)
         self.sos = signal.butter(
             4, 10 ** self.filter_val, "low", False, "sos", Module.sample_rate
@@ -71,7 +71,7 @@ class Filter:
         result, self.filter_z = signal.sosfilt(
             self.sos, initial, axis=0, zi=self.filter_z
         )
-        self.out_jack.send(result.astype(Module.sample_type).tobytes())
+        self.mod.send_data(self.out_jack, result.astype(Module.sample_type))
 
     async def ui_task(self, interval=(1 / 60)):
         while True:

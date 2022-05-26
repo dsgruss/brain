@@ -1,4 +1,5 @@
 from enum import auto, Enum
+from typing import NewType
 
 
 class PatchState(Enum):
@@ -21,9 +22,14 @@ class EventHandler:
         pass
 
     def process(self) -> None:
-        """Input jack data is ready to be processed. Event processing should use ``get_data`` on all input jacks to ensure the most synchronized state."""
+        """Input jack data is ready to be processed. Event processing should use ``get_data`` on all
+        input jacks to ensure the most synchronized state.
+        """
         pass
 
     def abort(self) -> None:
         """Shutdown directive"""
         pass
+
+
+JackID = NewType("JackID", str)
