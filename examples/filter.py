@@ -108,7 +108,7 @@ class FilterEventHandler(EventHandler):
     def process(self) -> None:
         self.app.data_callback()
 
-    def abort(self) -> None:
+    def halt(self) -> None:
         self.app.shutdown()
 
 

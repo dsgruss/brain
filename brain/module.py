@@ -255,7 +255,7 @@ class Module:
             self.broadcast_addr["broadcast"],
             self.patch_port,
             self.update_patch_state,
-            self.abort_callback,
+            self.halt_callback,
         )
 
     def start(self) -> None:
@@ -390,12 +390,12 @@ class Module:
         }
         self.protocol.update(s)
 
-    def abort_callback(self) -> None:
-        self.event_handler.abort()
+    def halt_callback(self) -> None:
+        self.event_handler.halt()
 
-    def abort_all(self) -> None:
-        """Sends an abort directive to all connected modules"""
-        self.protocol.abort_all()
+    def halt_all(self) -> None:
+        """Sends a halt directive to all connected modules"""
+        self.protocol.halt_all()
 
     def update_patch_state(self, patch_state, active_inputs, active_outputs):
         """Callback used to manages changes in the global state
@@ -522,13 +522,13 @@ class DataProtocol(asyncio.DatagramProtocol):
 
 class PatchProtocol(asyncio.DatagramProtocol):
     def __init__(
-        self, uuid, broadcast_addr, port, state_callback, abort_callback
+        self, uuid, broadcast_addr, port, state_callback, halt_callback
     ) -> None:
         self.uuid = uuid
         self.broadcast_addr = broadcast_addr
         self.port = port
         self.state_callback = state_callback
-        self.abort_callback = abort_callback
+        self.halt_callback = halt_callback
 
         self.states = {uuid: {"inputs": [], "outputs": []}}
 
@@ -553,8 +553,8 @@ class PatchProtocol(asyncio.DatagramProtocol):
         )
         self.push_update()
 
-    def abort_all(self):
-        self.datagram_send({"message": "ABORT", "uuid": "GLOBAL"})
+    def halt_all(self):
+        self.datagram_send({"message": "HALT", "uuid": "GLOBAL"})
 
     def push_update(self):
         active_inputs = []
@@ -594,6 +594,6 @@ class PatchProtocol(asyncio.DatagramProtocol):
         if response["message"] == "UPDATE":
             self.states[response["uuid"]] = response["state"]
             self.push_update()
-        if response["message"] == "ABORT":
-            if self.abort_callback is not None:
-                self.abort_callback()
+        if response["message"] == "HALT":
+            if self.halt_callback is not None:
+                self.halt_callback()

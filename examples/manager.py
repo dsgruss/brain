@@ -36,7 +36,7 @@ class Manager:
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
         tk.Button(
-            self.root, text="🔌    Close All", command=self.mod.abort_all, width=22
+            self.root, text="🔌    Close All", command=self.mod.halt_all, width=22
         ).place(x=10, y=170)
 
         self.statusbar = tk.Label(
@@ -72,7 +72,7 @@ class ManagerEventHandler(EventHandler):
     def patch(self, state: PatchState) -> None:
         self.app.patching_callback(state)
 
-    def abort(self) -> None:
+    def halt(self) -> None:
         self.app.shutdown()
 
 

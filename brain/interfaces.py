@@ -27,7 +27,7 @@ class EventHandler:
         """
         pass
 
-    def abort(self) -> None:
+    def halt(self) -> None:
         """Shutdown directive"""
         pass
 

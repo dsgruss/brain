@@ -181,7 +181,7 @@ class OscilloscopeEventHandler(EventHandler):
     def patch(self, state: PatchState) -> None:
         self.app.patching_callback(state)
 
-    def abort(self) -> None:
+    def halt(self) -> None:
         self.app.shutdown()
 
 
