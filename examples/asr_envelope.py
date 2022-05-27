@@ -3,7 +3,7 @@ import numpy as np
 import tkinter as tk
 import time
 
-from brain import Module, EventHandler, PatchState
+import brain
 from common import tkJack
 
 import logging
@@ -24,7 +24,7 @@ class ASREnvelope:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = Module(self.name, ASREnvelopeEventHandler(self))
+        self.mod = brain.Module(self.name, ASREnvelopeEventHandler(self))
 
         self.gate_jack = self.mod.add_input("Gate In", self.data_callback)
         self.asr_jack = self.mod.add_output("ASR Envelope", self.color)
@@ -32,8 +32,8 @@ class ASREnvelope:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.gates = [0] * Module.channels
-        self.level = [0] * Module.channels
+        self.gates = [0] * brain.CHANNELS
+        self.level = [0] * brain.CHANNELS
 
         loop.create_task(self.output_task())
         loop.create_task(self.module_task())
@@ -56,15 +56,15 @@ class ASREnvelope:
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     def data_callback(self, data):
-        result = np.frombuffer(data, dtype=Module.sample_type)
-        result = result.reshape((len(result) // Module.channels, Module.channels))
-        for i in range(Module.channels):
+        result = np.frombuffer(data, dtype=brain.SAMPLE_TYPE)
+        result = result.reshape((len(result) // brain.CHANNELS, brain.CHANNELS))
+        for i in range(brain.CHANNELS):
             self.gates[i] = result[0, i]
 
     async def module_task(self):
         while True:
             self.mod.update()
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -92,12 +92,12 @@ class ASREnvelope:
 
     async def output_task(self):
         t = time.perf_counter()
-        astep = 16000 / Module.packet_rate / self.atime
-        rstep = 16000 / Module.packet_rate / self.rtime
-        output = np.zeros((1, Module.channels), dtype=Module.sample_type)
+        astep = 16000 / brain.PACKET_RATE / self.atime
+        rstep = 16000 / brain.PACKET_RATE / self.rtime
+        output = np.zeros((1, brain.CHANNELS), dtype=brain.SAMPLE_TYPE)
         while True:
             dt = time.perf_counter() - t
-            while dt > (1 / Module.packet_rate):
+            while dt > (1 / brain.PACKET_RATE):
                 for i, v in enumerate(self.gates):
                     if self.level[i] < v:
                         self.level[i] = min(v, self.level[i] + astep)
@@ -106,17 +106,17 @@ class ASREnvelope:
                     output[0, i] = round(self.level[i])
 
                 self.mod.send_data(self.asr_jack, output)
-                t += 1 / Module.packet_rate
+                t += 1 / brain.PACKET_RATE
                 dt = time.perf_counter() - t
 
-            await asyncio.sleep(1 / Module.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
 
-class ASREnvelopeEventHandler(EventHandler):
+class ASREnvelopeEventHandler(brain.EventHandler):
     def __init__(self, app: ASREnvelope) -> None:
         self.app = app
 
-    def patch(self, state: PatchState) -> None:
+    def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
     def halt(self) -> None:

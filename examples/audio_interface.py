@@ -6,7 +6,7 @@ import threading
 
 from collections import deque
 
-from brain import Module, EventHandler, PatchState
+import brain
 from common import tkJack
 
 import logging
@@ -64,7 +64,7 @@ class AudioInterface:
 
         logging.info("Using device " + sd.query_devices(default_device)["name"])
 
-        self.mod = Module(self.name, AudioInterfaceEventHandler(self))
+        self.mod = brain.Module(self.name, AudioInterfaceEventHandler(self))
         self.in_jack = self.mod.add_input("Audio In")
         self.level_jack = self.mod.add_input("Level")
 
@@ -73,14 +73,14 @@ class AudioInterface:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.audio_buffer = OverwriteBuffer(Module.buffer_size)
-        self.level_buffer = OverwriteBuffer(Module.buffer_size)
+        self.audio_buffer = OverwriteBuffer(brain.BUFFER_SIZE)
+        self.level_buffer = OverwriteBuffer(brain.BUFFER_SIZE)
         s = sd.OutputStream(
             device=default_device,
-            samplerate=Module.sample_rate,
+            samplerate=brain.SAMPLE_RATE,
             channels=1,
-            dtype=Module.sample_type,
-            blocksize=Module.block_size,
+            dtype=brain.SAMPLE_TYPE,
+            blocksize=brain.BLOCK_SIZE,
             callback=self.audio_callback,
         )
 
@@ -123,7 +123,7 @@ class AudioInterface:
     async def module_task(self):
         while True:
             self.mod.update()
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -142,19 +142,19 @@ class AudioInterface:
             data = self.audio_buffer.get()
             level = self.level_buffer.get()
 
-            outdata[:] = np.zeros((Module.block_size, 1))
-            for i in range(Module.channels):
+            outdata[:] = np.zeros((brain.BLOCK_SIZE, 1))
+            for i in range(brain.CHANNELS):
                 outdata[:, 0] += (data[:, i] * (level[0, i] / (4 * 16000))).astype(int)
             self.level_value = max(level[0, :]) / 16000
         except Empty:
-            outdata[:] = np.zeros((Module.block_size, 1))
+            outdata[:] = np.zeros((brain.BLOCK_SIZE, 1))
 
 
-class AudioInterfaceEventHandler(EventHandler):
+class AudioInterfaceEventHandler(brain.EventHandler):
     def __init__(self, app: AudioInterface) -> None:
         self.app = app
 
-    def patch(self, state: PatchState) -> None:
+    def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
     def process(self) -> None:

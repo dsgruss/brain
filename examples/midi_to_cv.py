@@ -6,7 +6,7 @@ import tkinter as tk
 
 from dataclasses import dataclass
 
-from brain import Module, EventHandler, PatchState
+import brain
 from common import tkJack
 
 import logging
@@ -39,9 +39,9 @@ class MidiToCV:
         for inp in mido.get_input_names():
             self.loop.create_task(self.midi_task(mido.open_input(inp)))
 
-        self.mod = Module(self.name, MidiToCVEventHandler(self))
+        self.mod = brain.Module(self.name, MidiToCVEventHandler(self))
 
-        self.voices = [Voice(0, False, 0) for _ in range(Module.channels)]
+        self.voices = [Voice(0, False, 0) for _ in range(brain.CHANNELS)]
         self.mod_wheel = 0
 
         self.note_jack = self.mod.add_output(name="Note", color=self.color)
@@ -96,7 +96,7 @@ class MidiToCV:
     async def module_task(self):
         while True:
             self.mod.update()
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -148,12 +148,12 @@ class MidiToCV:
         rate"""
 
         t = time.perf_counter()
-        voct_data = np.zeros((1, 8), dtype=Module.sample_type)
-        gate_data = np.zeros((1, 8), dtype=Module.sample_type)
-        mdwh_data = np.zeros((1, 8), dtype=Module.sample_type)
+        voct_data = np.zeros((1, 8), dtype=brain.SAMPLE_TYPE)
+        gate_data = np.zeros((1, 8), dtype=brain.SAMPLE_TYPE)
+        mdwh_data = np.zeros((1, 8), dtype=brain.SAMPLE_TYPE)
         while True:
             dt = time.perf_counter() - t
-            while dt > (1 / Module.packet_rate):
+            while dt > (1 / brain.PACKET_RATE):
                 for i, v in enumerate(self.voices):
                     voct_data[0, i] = v.note * 256
                     gate_data[0, i] = 16000 if v.on else 0
@@ -162,17 +162,17 @@ class MidiToCV:
                 self.mod.send_data(self.note_jack, voct_data)
                 self.mod.send_data(self.gate_jack, gate_data)
                 self.mod.send_data(self.mdwh_jack, mdwh_data)
-                t += 1 / Module.packet_rate
+                t += 1 / brain.PACKET_RATE
                 dt = time.perf_counter() - t
 
-            await asyncio.sleep(1 / Module.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
 
-class MidiToCVEventHandler(EventHandler):
+class MidiToCVEventHandler(brain.EventHandler):
     def __init__(self, app: MidiToCV) -> None:
         self.app = app
 
-    def patch(self, state: PatchState) -> None:
+    def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
     def halt(self) -> None:

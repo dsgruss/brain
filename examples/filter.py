@@ -4,7 +4,7 @@ import tkinter as tk
 
 from scipy import signal
 
-from brain import Module, EventHandler, PatchState
+import brain
 from common import tkJack
 
 import logging
@@ -22,7 +22,7 @@ class Filter:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = Module(self.name, FilterEventHandler(self))
+        self.mod = brain.Module(self.name, FilterEventHandler(self))
         self.in_jack = self.mod.add_input("Audio In")
         self.out_jack = self.mod.add_output("Audio Out", color=self.color)
 
@@ -65,12 +65,12 @@ class Filter:
         initial = self.mod.get_data(self.in_jack)
         self.filter_val += 0.025 * (self.slide_val.get() - self.filter_val)
         self.sos = signal.butter(
-            4, 10 ** self.filter_val, "low", False, "sos", Module.sample_rate
+            4, 10 ** self.filter_val, "low", False, "sos", brain.SAMPLE_RATE
         )
         result, self.filter_z = signal.sosfilt(
             self.sos, initial, axis=0, zi=self.filter_z
         )
-        self.mod.send_data(self.out_jack, result.astype(Module.sample_type))
+        self.mod.send_data(self.out_jack, result.astype(brain.SAMPLE_TYPE))
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -87,7 +87,7 @@ class Filter:
     async def module_task(self):
         while True:
             self.mod.update()
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -102,11 +102,11 @@ class Filter:
             jack.patching_callback(state)
 
 
-class FilterEventHandler(EventHandler):
+class FilterEventHandler(brain.EventHandler):
     def __init__(self, app: Filter) -> None:
         self.app = app
 
-    def patch(self, state: PatchState) -> None:
+    def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
     def process(self) -> None:

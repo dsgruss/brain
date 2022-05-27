@@ -3,7 +3,7 @@ import numpy as np
 import tkinter as tk
 import time
 
-from brain import Module, EventHandler, PatchState
+import brain
 
 import logging
 
@@ -22,7 +22,7 @@ class Oscillator:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = Module(self.name, OscillatorEventHandler(self))
+        self.mod = brain.Module(self.name, OscillatorEventHandler(self))
 
         self.note_jack = self.mod.add_input("Note In", self.data_callback)
         self.sin_jack = self.mod.add_output("Sin", self.color)
@@ -30,7 +30,7 @@ class Oscillator:
         self.saw_jack = self.mod.add_output("Saw", self.color)
         self.sqr_jack = self.mod.add_output("Sqr", self.color)
 
-        self.note = [69 * 256] * Module.channels
+        self.note = [69 * 256] * brain.CHANNELS
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -62,9 +62,9 @@ class Oscillator:
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     def data_callback(self, data):
-        result = np.frombuffer(data, dtype=Module.sample_type)
-        result = result.reshape((len(result) // Module.channels, Module.channels))
-        for i in range(Module.channels):
+        result = np.frombuffer(data, dtype=brain.SAMPLE_TYPE)
+        result = result.reshape((len(result) // brain.CHANNELS, brain.CHANNELS))
+        for i in range(brain.CHANNELS):
             self.note[i] = result[0, i]
 
     async def ui_task(self, interval=(1 / 60)):
@@ -87,7 +87,7 @@ class Oscillator:
     async def module_task(self):
         while True:
             self.mod.update()
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
     def shutdown(self):
         for task in asyncio.all_tasks():
@@ -110,20 +110,20 @@ class Oscillator:
     async def output_task(self):
         t = time.perf_counter()
         sin_output = np.zeros(
-            (Module.block_size, Module.channels), dtype=Module.sample_type
+            (brain.BLOCK_SIZE, brain.CHANNELS), dtype=brain.SAMPLE_TYPE
         )
         tri_output = np.zeros(
-            (Module.block_size, Module.channels), dtype=Module.sample_type
+            (brain.BLOCK_SIZE, brain.CHANNELS), dtype=brain.SAMPLE_TYPE
         )
         saw_output = np.zeros(
-            (Module.block_size, Module.channels), dtype=Module.sample_type
+            (brain.BLOCK_SIZE, brain.CHANNELS), dtype=brain.SAMPLE_TYPE
         )
         sqr_output = np.zeros(
-            (Module.block_size, Module.channels), dtype=Module.sample_type
+            (brain.BLOCK_SIZE, brain.CHANNELS), dtype=brain.SAMPLE_TYPE
         )
 
         wavetable_size = 2048  # samples
-        wavetable_pos = [0] * Module.channels
+        wavetable_pos = [0] * brain.CHANNELS
 
         a = 8000  # amplitude zero-to-peak
         sin_wavetable = np.array(
@@ -131,7 +131,7 @@ class Oscillator:
                 round(a * np.sin(2 * np.pi * i / wavetable_size))
                 for i in range(wavetable_size)
             ],
-            dtype=Module.sample_type,
+            dtype=brain.SAMPLE_TYPE,
         )
         tri_wavetable = np.array(
             [
@@ -142,28 +142,28 @@ class Oscillator:
                 round(a - 2 * a * (i - wavetable_size // 2) / (wavetable_size // 2))
                 for i in range(wavetable_size // 2, wavetable_size)
             ],
-            dtype=Module.sample_type,
+            dtype=brain.SAMPLE_TYPE,
         )
         saw_wavetable = np.array(
             [round(-a + 2 * a * i / wavetable_size) for i in range(wavetable_size)],
-            dtype=Module.sample_type,
+            dtype=brain.SAMPLE_TYPE,
         )
         sqr_wavetable = np.array(
             [a if i < wavetable_size // 2 else -a for i in range(wavetable_size)],
-            dtype=Module.sample_type,
+            dtype=brain.SAMPLE_TYPE,
         )
 
         while True:
             dt = time.perf_counter() - t
-            while dt > (1 / Module.packet_rate):
+            while dt > (1 / brain.PACKET_RATE):
                 for i, v in enumerate(self.note):
                     f = 440 * 2 ** ((v / 256 - 69) / 12)
-                    for j in range(Module.block_size):
+                    for j in range(brain.BLOCK_SIZE):
                         sin_output[j, i] = sin_wavetable[int(wavetable_pos[i])]
                         tri_output[j, i] = tri_wavetable[int(wavetable_pos[i])]
                         saw_output[j, i] = saw_wavetable[int(wavetable_pos[i])]
                         sqr_output[j, i] = sqr_wavetable[int(wavetable_pos[i])]
-                        wavetable_pos[i] += f / Module.sample_rate * wavetable_size
+                        wavetable_pos[i] += f / brain.SAMPLE_RATE * wavetable_size
                         if wavetable_pos[i] >= wavetable_size:
                             wavetable_pos[i] -= wavetable_size
 
@@ -171,17 +171,17 @@ class Oscillator:
                 self.mod.send_data(self.tri_jack, tri_output)
                 self.mod.send_data(self.saw_jack, saw_output)
                 self.mod.send_data(self.sqr_jack, sqr_output)
-                t += 1 / Module.packet_rate
+                t += 1 / brain.PACKET_RATE
                 dt = time.perf_counter() - t
 
             await asyncio.sleep(0)
 
 
-class OscillatorEventHandler(EventHandler):
+class OscillatorEventHandler(brain.EventHandler):
     def __init__(self, app: Oscillator) -> None:
         self.app = app
 
-    def patch(self, state: PatchState) -> None:
+    def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
     def halt(self) -> None:

@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.lines import Line2D
 
-from brain import Module, EventHandler, PatchState
+import brain
 from common import tkJack
 
 import logging
@@ -27,14 +27,14 @@ class Oscilloscope:
     def __init__(self, loop):
         self.loop = loop
 
-        self.mod = Module(self.name, OscilloscopeEventHandler(self))
+        self.mod = brain.Module(self.name, OscilloscopeEventHandler(self))
         self.data_jack = self.mod.add_input("Data", self.data_callback)
 
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.dataseries = [[] for _ in range(Module.channels)]
-        self.timeseries = [[] for _ in range(Module.channels)]
+        self.dataseries = [[] for _ in range(brain.CHANNELS)]
+        self.timeseries = [[] for _ in range(brain.CHANNELS)]
 
         # loop.create_task(self.random_square_wave())
         # loop.create_task(self.sin_wave())
@@ -43,12 +43,12 @@ class Oscilloscope:
         loop.create_task(self.module_task())
 
     def data_callback(self, data):
-        result = np.frombuffer(data, dtype=Module.sample_type)
+        result = np.frombuffer(data, dtype=brain.SAMPLE_TYPE)
         if len(self.timeseries[0]) == 0:
             t = 0
         else:
-            t = self.timeseries[0][-1] + (1 / Module.packet_rate)
-        for i in range(Module.channels):
+            t = self.timeseries[0][-1] + (1 / brain.PACKET_RATE)
+        for i in range(brain.CHANNELS):
             self.dataseries[i].append(result[i])
             self.timeseries[i].append(t)
 
@@ -73,9 +73,7 @@ class Oscilloscope:
         self.fig_canvas.get_tk_widget().place(x=10, y=10)
 
         ax = fig.add_subplot()
-        self.plot_lines = [
-            Line2D([], [], color=f"C{i}") for i in range(Module.channels)
-        ]
+        self.plot_lines = [Line2D([], [], color=f"C{i}") for i in range(brain.CHANNELS)]
         for line in self.plot_lines:
             ax.add_line(line)
         ax.set_xlim([0, self.time_div])
@@ -90,7 +88,7 @@ class Oscilloscope:
             try:
                 self.data_tkjack.update_display(1)
 
-                for i in range(self.mod.channels):
+                for i in range(brain.CHANNELS):
                     while (
                         len(self.timeseries[i]) >= 2
                         and self.timeseries[i][-1] - self.timeseries[i][0]
@@ -119,7 +117,7 @@ class Oscilloscope:
     async def module_task(self):
         while True:
             self.mod.update()
-            await asyncio.sleep(1 / self.mod.packet_rate)
+            await asyncio.sleep(1 / brain.PACKET_RATE)
 
     async def quit(self):
         self.loop.stop()
@@ -179,11 +177,11 @@ class Oscilloscope:
             await asyncio.sleep(1 / 100)
 
 
-class OscilloscopeEventHandler(EventHandler):
+class OscilloscopeEventHandler(brain.EventHandler):
     def __init__(self, app: Oscilloscope) -> None:
         self.app = app
 
-    def patch(self, state: PatchState) -> None:
+    def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
     def halt(self) -> None:
