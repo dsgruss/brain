@@ -77,19 +77,14 @@ class Module:
             while jack.update():
                 self.check_process()
 
-    def add_input(self, name: str, data_callback=None) -> InputJack:
+    def add_input(self, name: str) -> InputJack:
         """Adds a new input jack to the module
 
         :param name: Identifier describing the new jack
 
-        :param data_callback: Function that is called when new data arrives at the input jack. This
-            callback fires immediately when the data is received, so use ``process_callback`` if a
-            synchronized consumption of multiple inputs is desired (i.e. the signals are not
-            processed independently).
-
         :return: The created jack instance
         """
-        jack = InputJack(name, data_callback)
+        jack = InputJack(name)
         self.inputs[jack.id] = jack
         return jack
 

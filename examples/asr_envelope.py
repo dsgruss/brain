@@ -26,7 +26,7 @@ class ASREnvelope:
 
         self.mod = brain.Module(self.name, ASREnvelopeEventHandler(self))
 
-        self.gate_jack = self.mod.add_input("Gate In", self.data_callback)
+        self.gate_jack = self.mod.add_input("Gate In")
         self.asr_jack = self.mod.add_output("ASR Envelope", self.color)
 
         self.ui_setup()
@@ -55,11 +55,10 @@ class ASREnvelope:
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def data_callback(self, data):
-        result = np.frombuffer(data, dtype=brain.SAMPLE_TYPE)
-        result = result.reshape((len(result) // brain.CHANNELS, brain.CHANNELS))
+    def data_callback(self):
+        data = self.gate_jack.get_data()
         for i in range(brain.CHANNELS):
-            self.gates[i] = result[0, i]
+            self.gates[i] = data[0, i]
 
     async def module_task(self):
         while True:
@@ -118,6 +117,9 @@ class ASREnvelopeEventHandler(brain.EventHandler):
 
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
+
+    def process(self) -> None:
+        self.app.data_callback()
 
     def halt(self) -> None:
         self.app.shutdown()

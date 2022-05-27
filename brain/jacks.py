@@ -30,15 +30,9 @@ class InputJack(Jack):
     typically instantiated directly but rather through ``Module.add_input``.
 
     :param name: Identifier describing the input jack
-
-    :param data_callback: Function that is called when new data arrives at the input jack. This
-        callback fires immediately when the data is received, so use ``process_callback`` if a
-        synchronized consumption of multiple inputs is desired (i.e. the signals are not processed
-        independently).
     """
 
-    def __init__(self, name: str, data_callback):
-        self.callback = data_callback
+    def __init__(self, name: str):
         self.data_queue = deque()
         self.last_seen_data = np.zeros((BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
         self.connected_jack = None
@@ -77,8 +71,6 @@ class InputJack(Jack):
 
     def update(self):
         if (data := self.jack_listener.get_data()) is not None:
-            if self.callback is not None:
-                self.callback(data)
             data = np.frombuffer(data, dtype=SAMPLE_TYPE)
             data = data.reshape((len(data) // CHANNELS, CHANNELS))
             self.last_seen_data = data.copy()

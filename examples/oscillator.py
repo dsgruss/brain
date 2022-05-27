@@ -24,7 +24,7 @@ class Oscillator:
 
         self.mod = brain.Module(self.name, OscillatorEventHandler(self))
 
-        self.note_jack = self.mod.add_input("Note In", self.data_callback)
+        self.note_jack = self.mod.add_input("Note In")
         self.sin_jack = self.mod.add_output("Sin", self.color)
         self.tri_jack = self.mod.add_output("Tri", self.color)
         self.saw_jack = self.mod.add_output("Saw", self.color)
@@ -61,11 +61,10 @@ class Oscillator:
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def data_callback(self, data):
-        result = np.frombuffer(data, dtype=brain.SAMPLE_TYPE)
-        result = result.reshape((len(result) // brain.CHANNELS, brain.CHANNELS))
+    def data_callback(self):
+        data = self.note_jack.get_data()
         for i in range(brain.CHANNELS):
-            self.note[i] = result[0, i]
+            self.note[i] = data[0, i]
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -183,6 +182,9 @@ class OscillatorEventHandler(brain.EventHandler):
 
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
+
+    def process(self) -> None:
+        self.app.data_callback()
 
     def halt(self) -> None:
         self.app.shutdown()

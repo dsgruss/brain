@@ -28,7 +28,7 @@ class Oscilloscope:
         self.loop = loop
 
         self.mod = brain.Module(self.name, OscilloscopeEventHandler(self))
-        self.data_jack = self.mod.add_input("Data", self.data_callback)
+        self.data_jack = self.mod.add_input("Data")
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -42,14 +42,14 @@ class Oscilloscope:
 
         loop.create_task(self.module_task())
 
-    def data_callback(self, data):
-        result = np.frombuffer(data, dtype=brain.SAMPLE_TYPE)
+    def data_callback(self):
+        result = self.data_jack.get_data()
         if len(self.timeseries[0]) == 0:
             t = 0
         else:
             t = self.timeseries[0][-1] + (1 / brain.PACKET_RATE)
         for i in range(brain.CHANNELS):
-            self.dataseries[i].append(result[i])
+            self.dataseries[i].append(result[0, i])
             self.timeseries[i].append(t)
 
     def ui_setup(self):
@@ -183,6 +183,9 @@ class OscilloscopeEventHandler(brain.EventHandler):
 
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
+
+    def process(self) -> None:
+        self.app.data_callback()
 
     def halt(self) -> None:
         self.app.shutdown()
