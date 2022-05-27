@@ -9,6 +9,8 @@ from common import tkJack
 
 import logging
 
+from examples.common import tkKnob
+
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
@@ -42,24 +44,24 @@ class Filter:
         self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
+        tk.Label(self.root, text=self.name).place(x=10, y=10)
 
         self.in_tkjack = tkJack(self.root, self.mod, self.in_jack, "Audio In")
         self.in_tkjack.place(x=10, y=50)
-        self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Audio Out")
-        self.out_tkjack.place(x=10, y=170)
 
         self.slide_val = tk.DoubleVar()
-        tk.Scale(
+        self.slide_val.set(3.0)
+        tkKnob(
             self.root,
+            "Cutoff",
+            color=self.color,
             variable=self.slide_val,
-            from_=1,
-            to=4,
-            orient=tk.HORIZONTAL,
-            resolution=0.001,
-        ).place(x=10, y=100)
-        self.slide_val.set(4)
+            from_=1.0,
+            to=4.0,
+        ).place(x=70, y=100)
 
-        tk.Label(self.root, text=self.name).place(x=10, y=10)
+        self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Audio Out")
+        self.out_tkjack.place(x=10, y=250)
 
     def data_callback(self):
         initial = self.mod.get_data(self.in_jack)
