@@ -5,11 +5,9 @@ import tkinter as tk
 from scipy import signal
 
 import brain
-from common import tkJack
+from common import tkJack, tkKnob
 
 import logging
-
-from examples.common import tkKnob
 
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
@@ -49,13 +47,13 @@ class Filter:
         self.in_tkjack = tkJack(self.root, self.mod, self.in_jack, "Audio In")
         self.in_tkjack.place(x=10, y=50)
 
-        self.slide_val = tk.DoubleVar()
-        self.slide_val.set(3.0)
+        self.cutoff_val = tk.DoubleVar()
+        self.cutoff_val.set(3.0)
         tkKnob(
             self.root,
             "Cutoff",
             color=self.color,
-            variable=self.slide_val,
+            variable=self.cutoff_val,
             from_=1.0,
             to=4.0,
         ).place(x=70, y=100)
@@ -65,7 +63,7 @@ class Filter:
 
     def data_callback(self):
         initial = self.mod.get_data(self.in_jack)
-        self.filter_val += 0.025 * (self.slide_val.get() - self.filter_val)
+        self.filter_val += 0.025 * (self.cutoff_val.get() - self.filter_val)
         self.sos = signal.butter(
             4, 10 ** self.filter_val, "low", False, "sos", brain.SAMPLE_RATE
         )
