@@ -3,12 +3,12 @@ import random
 import selectors
 import socket
 
+from brain.constants import PATCH_PORT
 from brain.parsers import Message, MessageParser
 
 
 class InputJackListener:
-    def __init__(self, callback) -> None:
-        self.callback = callback
+    def __init__(self) -> None:
         self.sock = None
 
     def connect(self, address, port):
@@ -17,14 +17,14 @@ class InputJackListener:
         self.sock.setblocking(False)
         self.sock.bind((address, port))
 
-    def update(self):
+    def get_data(self):
+        data = None
         if self.sock is not None:
             try:
-                while True:
-                    data = self.sock.recv(2048)
-                    self.callback(data)
+                data = self.sock.recv(2048)
             except BlockingIOError:
-                pass
+                return None
+        return data
 
 
 class OutputJackServer:
@@ -40,10 +40,9 @@ class OutputJackServer:
 
 
 class PatchServer:
-    def __init__(self, uuid, broadcast_addr, port, event_callback) -> None:
+    def __init__(self, uuid, broadcast_addr, event_callback) -> None:
         self.uuid = uuid
         self.broadcast_addr = broadcast_addr
-        self.port = port
         self.event_callback = event_callback
         self.parser = MessageParser()
 
@@ -52,7 +51,7 @@ class PatchServer:
 
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
-        self.sock.bind((self.broadcast_addr["addr"], port))
+        self.sock.bind((self.broadcast_addr["addr"], PATCH_PORT))
         self.sock.setblocking(False)
 
         self.sel = selectors.DefaultSelector()
@@ -68,12 +67,12 @@ class PatchServer:
     def message_send(self, message: Message):
         logging.info(
             "=> "
-            + str((self.broadcast_addr["broadcast"], self.port))
+            + str((self.broadcast_addr["broadcast"], PATCH_PORT))
             + ": "
             + str(message)
         )
         payload = self.parser.create_directive(message)
-        self.sock.sendto(payload, (self.broadcast_addr["broadcast"], self.port))
+        self.sock.sendto(payload, (self.broadcast_addr["broadcast"], PATCH_PORT))
 
     def datagram_received(self, data: bytes) -> None:
         logging.info("<= " + str(data.decode()))

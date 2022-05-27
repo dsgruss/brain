@@ -6,7 +6,7 @@ import uuid
 
 from typing import Dict
 
-from .constants import BUFFER_SIZE, PATCH_PORT, PREFERRED_BROADCAST
+from .constants import BUFFER_SIZE, PREFERRED_BROADCAST
 from .interfaces import (
     EventHandler,
     GlobalState,
@@ -64,7 +64,6 @@ class Module:
         self.patch_server = PatchServer(
             self.uuid,
             self.broadcast_addr,
-            PATCH_PORT,
             self.event_callback,
         )
 
@@ -75,7 +74,8 @@ class Module:
         """
         self.patch_server.update()
         for jack in self.inputs.values():
-            jack.update()
+            while jack.update():
+                self.check_process()
 
     def add_input(self, name: str, data_callback=None) -> InputJack:
         """Adds a new input jack to the module
@@ -89,7 +89,7 @@ class Module:
 
         :return: The created jack instance
         """
-        jack = InputJack(name, data_callback, self)
+        jack = InputJack(name, data_callback)
         self.inputs[jack.id] = jack
         return jack
 

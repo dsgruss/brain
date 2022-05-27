@@ -37,13 +37,12 @@ class InputJack(Jack):
         independently).
     """
 
-    def __init__(self, name: str, data_callback, parent_module):
-        self.parent_module = parent_module
+    def __init__(self, name: str, data_callback):
         self.callback = data_callback
         self.data_queue = deque()
         self.last_seen_data = np.zeros((BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
         self.connected_jack = None
-        self.jack_listener = InputJackListener(self.process_callback)
+        self.jack_listener = InputJackListener()
 
         super().__init__(name)
 
@@ -77,16 +76,15 @@ class InputJack(Jack):
         self.jack_listener.connect(address, port)
 
     def update(self):
-        self.jack_listener.update()
-
-    def process_callback(self, data):
-        if self.callback is not None:
-            self.callback(data)
-        data = np.frombuffer(data, dtype=SAMPLE_TYPE)
-        data = data.reshape((len(data) // CHANNELS, CHANNELS))
-        self.last_seen_data = data.copy()
-        self.data_queue.appendleft(data)
-        self.parent_module.check_process()
+        if (data := self.jack_listener.get_data()) is not None:
+            if self.callback is not None:
+                self.callback(data)
+            data = np.frombuffer(data, dtype=SAMPLE_TYPE)
+            data = data.reshape((len(data) // CHANNELS, CHANNELS))
+            self.last_seen_data = data.copy()
+            self.data_queue.appendleft(data)
+            return True
+        return False
 
     def get_data(self) -> np.ndarray:
         """Pull pending data from the jack. In the event that data is not available, this will
