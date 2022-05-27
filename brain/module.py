@@ -62,9 +62,7 @@ class Module:
                 self.broadcast_addr = detail
 
         self.patch_server = PatchServer(
-            self.uuid,
-            self.broadcast_addr,
-            self.event_callback,
+            self.uuid, self.broadcast_addr["addr"], self.broadcast_addr["broadcast"]
         )
 
     def update(self):
@@ -72,7 +70,8 @@ class Module:
         perform callbacks if requested. This should be run periodically in an event loop or a
         thread.
         """
-        self.patch_server.update()
+        while (message := self.patch_server.get_message()) is not None:
+            self.event_process(message)
         for jack in self.inputs.values():
             while jack.update():
                 self.check_process()
@@ -131,7 +130,7 @@ class Module:
 
     def get_data(self, jack: InputJack) -> np.ndarray:
         """Pull pending data from the jack. In the event that data is not available, this will
-        return a copy of the last seen packet. Used in response to a ``process_callback``.
+        return a copy of the last seen packet. Used in response to a ``process`` callback.
 
         :param jack: Input jack to receive data from
 
@@ -191,7 +190,7 @@ class Module:
         self.patch_server.message_send(Message("GLOBAL", MessageType.HALT))
 
     def update_patch_state(self):
-        """Callback used to manages changes in the global state"""
+        """Manages changes in the global state"""
         active_inputs = list(itertools.chain(*self.global_state.held_inputs.values()))
         active_outputs = list(itertools.chain(*self.global_state.held_outputs.values()))
         total_inputs = len(active_inputs)
@@ -290,9 +289,7 @@ class Module:
             output_jack.connect(input_uuid, input_id)
 
     def check_process(self) -> None:
-        """Callback that determines if data is ready for a synchronized processing step across all of
-        the owned input jacks
-        """
+        """Determine if data is ready for a synchronized processing step"""
 
         data_available = True
         for jack in self.inputs.values():
@@ -306,7 +303,7 @@ class Module:
         if data_available:
             self.event_handler.process()
 
-    def event_callback(self, message: Message):
+    def event_process(self, message: Message):
         if message.type == MessageType.HALT:
             self.halt_callback()
         if message.type == MessageType.UPDATE:

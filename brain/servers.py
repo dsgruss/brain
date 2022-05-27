@@ -1,7 +1,7 @@
 import logging
 import random
-import selectors
 import socket
+from typing import Union
 
 from brain.constants import PATCH_PORT
 from brain.parsers import Message, MessageParser
@@ -9,21 +9,22 @@ from brain.parsers import Message, MessageParser
 
 class InputJackListener:
     def __init__(self) -> None:
-        self.sock = None
+        self.connected = False
 
-    def connect(self, address, port):
+    def connect(self, address: str, port: int) -> None:
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
         self.sock.setblocking(False)
         self.sock.bind((address, port))
+        self.connected = True
 
-    def get_data(self):
-        data = None
-        if self.sock is not None:
+    def get_data(self) -> bytes:
+        data = b""
+        if self.connected:
             try:
                 data = self.sock.recv(2048)
             except BlockingIOError:
-                return None
+                return b""
         return data
 
 
@@ -40,10 +41,9 @@ class OutputJackServer:
 
 
 class PatchServer:
-    def __init__(self, uuid, broadcast_addr, event_callback) -> None:
+    def __init__(self, uuid, bind_addr, broadcast_addr) -> None:
         self.uuid = uuid
         self.broadcast_addr = broadcast_addr
-        self.event_callback = event_callback
         self.parser = MessageParser()
 
         # The socket allows address reuse, which may be a security concern. However, we are
@@ -51,31 +51,27 @@ class PatchServer:
 
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 2)
-        self.sock.bind((self.broadcast_addr["addr"], PATCH_PORT))
+        self.sock.bind((bind_addr, PATCH_PORT))
         self.sock.setblocking(False)
 
-        self.sel = selectors.DefaultSelector()
-        self.sel.register(self.sock, selectors.EVENT_READ)
+    def get_data(self) -> bytes:
+        data = b""
+        if self.sock is not None:
+            try:
+                data = self.sock.recv(2048)
+            except BlockingIOError:
+                return b""
+        return data
 
-        super().__init__()
-
-    def update(self):
-        events = self.sel.select(timeout=0)
-        for key, _ in events:
-            self.datagram_received(key.fileobj.recv(2048))
-
-    def message_send(self, message: Message):
+    def message_send(self, message: Message) -> None:
         logging.info(
-            "=> "
-            + str((self.broadcast_addr["broadcast"], PATCH_PORT))
-            + ": "
-            + str(message)
+            "=> " + str((self.broadcast_addr, PATCH_PORT)) + ": " + str(message)
         )
         payload = self.parser.create_directive(message)
-        self.sock.sendto(payload, (self.broadcast_addr["broadcast"], PATCH_PORT))
+        self.sock.sendto(payload, (self.broadcast_addr, PATCH_PORT))
 
-    def datagram_received(self, data: bytes) -> None:
-        logging.info("<= " + str(data.decode()))
-        message = self.parser.parse_directive(data)
+    def get_message(self) -> Union[Message, None]:
+        message = self.parser.parse_directive(self.get_data())
         if message is not None:
-            self.event_callback(message)
+            logging.info("<= " + str(message))
+        return message

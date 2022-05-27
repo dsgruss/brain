@@ -70,7 +70,7 @@ class InputJack(Jack):
         self.jack_listener.connect(address, port)
 
     def update(self):
-        if (data := self.jack_listener.get_data()) is not None:
+        if len(data := self.jack_listener.get_data()) != 0:
             data = np.frombuffer(data, dtype=SAMPLE_TYPE)
             data = data.reshape((len(data) // CHANNELS, CHANNELS))
             self.last_seen_data = data.copy()
@@ -80,7 +80,7 @@ class InputJack(Jack):
 
     def get_data(self) -> np.ndarray:
         """Pull pending data from the jack. In the event that data is not available, this will
-        return a copy of the last seen packet. Used in response to a ``process_callback``.
+        return a copy of the last seen packet. Used in response to a ``process`` callback.
 
         :return: An array of shape (X, ``CHANNELS``) of data type ``SAMPLE_TYPE``,
             where X is the number of samples sent in a packet window"""
