@@ -102,8 +102,8 @@ class tkKnob(tk.Frame):
         self.text.grid(row=1, column=0, pady=0)
 
         self.variable.set(np.clip(self.variable.get(), from_, to))
-        self.log_scale = np.log(to / from_) / np.log(10)
         if self.log:
+            self.log_scale = np.log(to / from_) / np.log(10)
             self.val = np.log(self.variable.get() / from_) / np.log(10) / self.log_scale
         else:
             self.val = (self.variable.get() - from_) / (to - from_)

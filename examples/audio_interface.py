@@ -49,7 +49,7 @@ class AudioInterface:
     color = 240  # hue
 
     grid_size = (4, 9)
-    grid_pos = (16, 0)
+    grid_pos = (32, 0)
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop

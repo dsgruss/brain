@@ -22,7 +22,7 @@ class Oscilloscope:
     name = "Oscilloscope"
     time_div = 4.0  # sec
     grid_size = (8, 9)
-    grid_pos = (20, 0)
+    grid_pos = (28, 9)
 
     def __init__(self, loop):
         self.loop = loop
@@ -57,7 +57,7 @@ class Oscilloscope:
         w = self.grid_size[0] * 50 - 10
         h = self.grid_size[1] * 50
         x = self.grid_pos[0] * 50 + 10 + 5
-        y = self.grid_pos[1] * 50 + 10
+        y = self.grid_pos[1] * 50 + 50
         self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
