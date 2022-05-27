@@ -20,7 +20,17 @@ class Message:
 
 
 class MessageParser:
-    def parse_directive(self, data: bytes):
+    """Determines how the messages passed on the patching port get translated into raw bytes in the
+    udp packets.
+    """
+    def parse_directive(self, data: bytes) -> Union[Message, None]:
+        """Turns raw bytes into a ``Message``. Returns ``None`` if the message was unable to be
+        parsed.
+        
+        :param data: Raw data
+
+        :return: The message object or ``None``
+        """
         try:
             response = json.loads(data)
         except json.JSONDecodeError:
@@ -47,6 +57,8 @@ class MessageParser:
             return Message(response["uuid"], MessageType.HALT)
 
     def create_directive(self, message: Message) -> bytes:
+        """Inverse of ``parse_directive``"""
+
         if message.type == MessageType.HALT:
             json_msg = {"message": "HALT", "uuid": message.uuid}
             return bytes(json.dumps(json_msg), "utf8")
