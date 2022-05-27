@@ -4,7 +4,7 @@ import tkinter as tk
 import time
 
 import brain
-from common import tkJack
+from common import tkJack, tkKnob
 
 import logging
 
@@ -12,8 +12,6 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
 class ASREnvelope:
-    atime = 0.25  # sec
-    rtime = 2  # sec
 
     name = "ASR Envelope Generator"
     color = 235  # hue
@@ -50,8 +48,33 @@ class ASREnvelope:
 
         self.gate_tkjack = tkJack(self.root, self.mod, self.gate_jack, "Gate In")
         self.gate_tkjack.place(x=10, y=50)
+
+        self.attack_val = tk.DoubleVar()
+        self.attack_val.set(0.25)
+        tkKnob(
+            self.root,
+            "Attack",
+            color=self.color,
+            variable=self.attack_val,
+            from_=0.001,
+            to=25.0,
+            log=True,
+        ).place(x=35, y=100)
+
+        self.release_val = tk.DoubleVar()
+        self.release_val.set(2)
+        tkKnob(
+            self.root,
+            "Release",
+            color=self.color,
+            variable=self.release_val,
+            from_=0.001,
+            to=25.0,
+            log=True,
+        ).place(x=105, y=100)
+
         self.asr_tkjack = tkJack(self.root, self.mod, self.asr_jack, "ASR Envelope")
-        self.asr_tkjack.place(x=10, y=130)
+        self.asr_tkjack.place(x=10, y=200)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
@@ -91,12 +114,14 @@ class ASREnvelope:
 
     async def output_task(self):
         t = time.perf_counter()
-        astep = 16000 / brain.PACKET_RATE / self.atime
-        rstep = 16000 / brain.PACKET_RATE / self.rtime
         output = np.zeros((1, brain.CHANNELS), dtype=brain.SAMPLE_TYPE)
         while True:
             dt = time.perf_counter() - t
             while dt > (1 / brain.PACKET_RATE):
+                atime = self.attack_val.get()
+                rtime = self.release_val.get()
+                astep = 16000 / brain.PACKET_RATE / atime
+                rstep = 16000 / brain.PACKET_RATE / rtime
                 for i, v in enumerate(self.gates):
                     if self.level[i] < v:
                         self.level[i] = min(v, self.level[i] + astep)

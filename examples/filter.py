@@ -48,14 +48,15 @@ class Filter:
         self.in_tkjack.place(x=10, y=50)
 
         self.cutoff_val = tk.DoubleVar()
-        self.cutoff_val.set(3.0)
+        self.cutoff_val.set(1000)
         tkKnob(
             self.root,
             "Cutoff",
             color=self.color,
             variable=self.cutoff_val,
-            from_=1.0,
-            to=4.0,
+            from_=20,
+            to=20000,
+            log=True,
         ).place(x=70, y=100)
 
         self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Audio Out")
@@ -65,7 +66,7 @@ class Filter:
         initial = self.mod.get_data(self.in_jack)
         self.filter_val += 0.025 * (self.cutoff_val.get() - self.filter_val)
         self.sos = signal.butter(
-            4, 10 ** self.filter_val, "low", False, "sos", brain.SAMPLE_RATE
+            4, self.filter_val, "low", False, "sos", brain.SAMPLE_RATE
         )
         result, self.filter_z = signal.sosfilt(
             self.sos, initial, axis=0, zi=self.filter_z

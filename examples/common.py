@@ -77,12 +77,13 @@ def hsv_to_string_rgb(hue: int, saturation: int, value: int) -> str:
 
 
 class tkKnob(tk.Frame):
-    def __init__(self, parent, label, color, variable, from_, to) -> None:
+    def __init__(self, parent, label, color, variable, from_, to, log=False) -> None:
         super().__init__(master=parent, width=50)
         self.color = color
         self.variable = variable
         self.from_ = from_
         self.to = to
+        self.log = log
 
         self.canvas = tk.Canvas(master=self, height=45, width=50)
         self.canvas.grid(row=0, column=0, pady=0)
@@ -92,19 +93,28 @@ class tkKnob(tk.Frame):
         self.canvas.bind("<Button-1>", self.drag_start)
         self.canvas.bind("<B1-Motion>", self.drag_motion)
 
+        self.num = tk.Label(self, text="")
+        self.num.place(x=10, y=15)
+        self.num.bind("<Button-1>", self.drag_start)
+        self.num.bind("<B1-Motion>", self.drag_motion)
+
         self.text = tk.Label(self, text=label)
         self.text.grid(row=1, column=0, pady=0)
 
         self.variable.set(np.clip(self.variable.get(), from_, to))
-        self.val = (
-            (self.variable.get() - self.from_) * 300 / (self.to - self.from_)
-        )  # degrees
+        self.log_scale = np.log(to / from_) / np.log(10)
+        if self.log:
+            self.val = np.log(self.variable.get() / from_) / np.log(10) / self.log_scale
+        else:
+            self.val = (self.variable.get() - from_) / (to - from_)
+
         self.redraw()
 
-    def degrees_to_pos(self, theta):
-        theta += 120
-        return 25 + 20 * np.cos(np.pi * theta / 180), 25 + 20 * np.sin(
-            np.pi * theta / 180
+    def degrees_to_pos(self, val):
+        theta = val * 300 + 120
+        return (
+            25 + 20 * np.cos(np.pi * theta / 180),
+            25 + 20 * np.sin(np.pi * theta / 180),
         )
 
     def drag_start(self, event):
@@ -113,8 +123,11 @@ class tkKnob(tk.Frame):
         self.initial_val = self.val
 
     def drag_motion(self, event):
-        self.val = np.clip(self.initial_val - event.y + self.drag_y, 0, 300)
-        self.variable.set(self.val / 300 * (self.to - self.from_) + self.from_)
+        self.val = np.clip(self.initial_val - (event.y - self.drag_y) / 300, 0, 1)
+        if self.log:
+            self.variable.set(self.from_ * 10 ** (self.log_scale * self.val))
+        else:
+            self.variable.set(self.val * (self.to - self.from_) + self.from_)
         self.redraw()
 
     def redraw(self):
@@ -128,3 +141,4 @@ class tkKnob(tk.Frame):
             fill=hsv_to_string_rgb(self.color, 100, 100),
             tags="pointer",
         )
+        self.num.config(text=f"{self.variable.get():.3f}"[:5])
