@@ -1,3 +1,5 @@
+import numpy as np
+
 from dataclasses import dataclass
 from enum import auto, Enum
 from typing import Dict, List, NewType
@@ -59,6 +61,20 @@ class EventHandler:
         input jacks to ensure the most synchronized state.
         """
         pass
+
+    def block_process(self, input: np.ndarray) -> np.ndarray:
+        """Process all incoming data as a single block
+
+        :param input: An array of shape (Y, X, ``CHANNELS``) of data type ``SAMPLE_TYPE``, where X
+            is the number of samples sent in a packet window and Y is the number of added input
+            jacks in the order created. Data that is sent with a lower sample rate is expanded to
+            match the highest sample rate packet.
+
+        :return: An array of shape (Y, X, ``CHANNELS``) of data type ``SAMPLE_TYPE``, where X is the
+            number of samples sent in a packet window and Y is the number of added output jacks in
+            the order created.
+        """
+        return np.zeros(1)
 
     def halt(self) -> None:
         """Shutdown directive"""

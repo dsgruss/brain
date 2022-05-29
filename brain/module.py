@@ -6,7 +6,13 @@ import uuid
 
 from typing import Dict
 
-from .constants import BUFFER_SIZE, PREFERRED_BROADCAST
+from .constants import (
+    BLOCK_SIZE,
+    BUFFER_SIZE,
+    CHANNELS,
+    PREFERRED_BROADCAST,
+    SAMPLE_TYPE,
+)
 from .interfaces import (
     EventHandler,
     GlobalState,
@@ -33,11 +39,17 @@ class Module:
     :param event_handler: Instance of an ``EventHandler`` used to process application events. The
         application should either create its own class that inherits from ``EventHandler`` or create
         a new instance and modify the class methods.
+
+    :param use_block_callback: If ``True``, then incoming data is merged and interpolated into a
+        single matrix for block processing.
     """
 
-    def __init__(self, name: str, event_handler: EventHandler = None):
+    def __init__(
+        self, name: str, event_handler: EventHandler = None, use_block_callback=False
+    ):
         self.name = name
         self.event_handler = event_handler or EventHandler()
+        self.use_block_callback = use_block_callback
         self.uuid: ModuleUuid = str(uuid.uuid4())
         self.global_state = GlobalState(PatchState.IDLE, {}, {})
 
@@ -296,12 +308,40 @@ class Module:
             if not jack.is_patched():
                 continue
             if len(jack.data_queue) >= BUFFER_SIZE:
-                self.event_handler.process()
+                if self.use_block_callback:
+                    self.block_create()
+                else:
+                    self.event_handler.process()
                 return
             if len(jack.data_queue) == 0:
                 data_available = False
         if data_available:
-            self.event_handler.process()
+            if self.use_block_callback:
+                self.block_create()
+            else:
+                self.event_handler.process()
+
+    def block_create(self) -> None:
+        data = [jack.get_data() for jack in self.inputs.values()]
+        for i in range(len(data)):
+            if data[i].shape[0] != BLOCK_SIZE:
+                expand = np.ones((BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
+                for j in range(CHANNELS):
+                    expand[:, j] = expand[:, j] * data[i][0, j]
+                data[i] = expand
+        result = np.array(data, dtype=SAMPLE_TYPE)
+        assert result.shape == (len(self.inputs.values()), BLOCK_SIZE, CHANNELS)
+        assert result.dtype == SAMPLE_TYPE
+        post_process = self.event_handler.block_process(result.copy())
+        if len(self.outputs.values()) > 0:
+            assert post_process.shape == (
+                len(self.outputs.values()),
+                BLOCK_SIZE,
+                CHANNELS,
+            )
+            assert post_process.dtype == SAMPLE_TYPE
+            for i, jack in enumerate(self.outputs.values()):
+                self.send_data(jack, post_process[i, :, :])
 
     def event_process(self, message: Message):
         if message.type == MessageType.HALT:

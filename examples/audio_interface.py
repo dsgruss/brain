@@ -2,9 +2,8 @@ import asyncio
 import numpy as np
 import sounddevice as sd
 import tkinter as tk
-import threading
 
-from collections import deque
+from queue import Queue
 
 import brain
 from common import tkJack
@@ -12,36 +11,6 @@ from common import tkJack
 import logging
 
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
-
-
-class Empty(Exception):
-    "Exception raised when OverwriteBuffer is accessed empty"
-    pass
-
-
-class OverwriteBuffer:
-    """A thread-safe queue that drops the oldest items when another one is added that would
-    otherwise increase the count beyond `maxsize`. In this way the time delta between the first and
-    last items is minimized and events will roughly remain in sync. By default, it will block while
-    waiting for exclusive access to the queue, but will not block while waiting for new items."""
-
-    def __init__(self, maxsize):
-        self.maxsize = maxsize
-        self.buffer = deque()
-        self.buffer_lock = threading.Lock()
-
-    def put(self, item):
-        with self.buffer_lock:
-            self.buffer.appendleft(item)
-            while len(self.buffer) >= self.maxsize:
-                self.buffer.pop()
-
-    def get(self):
-        with self.buffer_lock:
-            if len(self.buffer) == 0:
-                raise Empty
-            else:
-                return self.buffer.pop()
 
 
 class AudioInterface:
@@ -57,26 +26,27 @@ class AudioInterface:
         hostapis = {api["name"]: api for api in sd.query_hostapis()}
         for api in ["Windows WASAPI", "MME", "Windows DirectSound"]:
             if api in hostapis:
-                default_device = hostapis[api]["default_output_device"]
+                self.default_device = hostapis[api]["default_output_device"]
                 break
         else:
-            default_device = sd.default.device["output"]
+            self.default_device = sd.default.device["output"]
 
-        logging.info("Using device " + sd.query_devices(default_device)["name"])
+        logging.info("Using device " + sd.query_devices(self.default_device)["name"])
 
-        self.mod = brain.Module(self.name, AudioInterfaceEventHandler(self))
+        self.mod = brain.Module(
+            self.name, AudioInterfaceEventHandler(self), use_block_callback=True
+        )
         self.in_jack = self.mod.add_input("Audio In")
-        self.level_jack = self.mod.add_input("Level")
-
-        self.level_value = 0
+        self.audio_buffer = Queue(brain.BUFFER_SIZE)
 
         self.ui_setup()
         loop.create_task(self.ui_task())
+        loop.create_task(self.module_task())
+        loop.create_task(self.audio_task())
 
-        self.audio_buffer = OverwriteBuffer(brain.BUFFER_SIZE)
-        self.level_buffer = OverwriteBuffer(brain.BUFFER_SIZE)
+    async def audio_task(self):
         s = sd.OutputStream(
-            device=default_device,
+            device=self.default_device,
             samplerate=brain.SAMPLE_RATE,
             channels=1,
             dtype=brain.SAMPLE_TYPE,
@@ -84,8 +54,9 @@ class AudioInterface:
             callback=self.audio_callback,
         )
 
-        s.start()
-        loop.create_task(self.module_task())
+        with s:
+            while True:
+                await asyncio.sleep(5)
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -99,24 +70,25 @@ class AudioInterface:
 
         self.in_tkjack = tkJack(self.root, self.mod, self.in_jack, "Audio In")
         self.in_tkjack.place(x=10, y=50)
-        self.level_tkjack = tkJack(self.root, self.mod, self.level_jack, "Level")
-        self.level_tkjack.place(x=10, y=90)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def data_callback(self):
-        self.audio_buffer.put(self.mod.get_data(self.in_jack))
-        self.level_buffer.put(self.mod.get_data(self.level_jack))
+    def data_callback(self, data):
+        if not self.audio_buffer.full():
+            self.audio_buffer.put(data[0].copy())
+        assert data[0].shape == (48, 8)
+        assert data.dtype == np.int16
+        return np.zeros(1)
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                self.in_tkjack.update_display(1)
-                self.level_tkjack.update_display(self.level_value)
+                self.in_tkjack.update_display(1.0)
 
                 self.root.update()
                 await asyncio.sleep(interval)
-            except tk.TclError:
+            except tk.TclError as t:
+                logging.info(t)
                 self.shutdown()
                 break
 
@@ -131,23 +103,28 @@ class AudioInterface:
         asyncio.ensure_future(self.quit())
 
     async def quit(self):
+        logging.info("Quit invoked")
         self.loop.stop()
 
     def patching_callback(self, state):
-        for jack in [self.in_tkjack, self.level_tkjack]:
-            jack.patching_callback(state)
+        self.in_tkjack.patching_callback(state)
 
-    def audio_callback(self, outdata, frames, time, status):
-        try:
+    def audio_callback(
+        self, outdata: np.ndarray, frames: int, time, status: sd.CallbackFlags
+    ) -> None:
+        if frames != brain.BLOCK_SIZE:
+            logging.info("Frame mismatch")
+            raise ValueError
+        if status:
+            logging.info(status)
+            raise ValueError
+        if not self.audio_buffer.empty():
             data = self.audio_buffer.get()
-            level = self.level_buffer.get()
-
-            outdata[:] = np.zeros((brain.BLOCK_SIZE, 1))
+            outdata.fill(0)
             for i in range(brain.CHANNELS):
-                outdata[:, 0] += (data[:, i] * (level[0, i] / (4 * 16000))).astype(int)
-            self.level_value = max(level[0, :]) / 16000
-        except Empty:
-            outdata[:] = np.zeros((brain.BLOCK_SIZE, 1))
+                outdata[:, 0] += data[:, i]
+        else:
+            outdata.fill(0)
 
 
 class AudioInterfaceEventHandler(brain.EventHandler):
@@ -157,8 +134,8 @@ class AudioInterfaceEventHandler(brain.EventHandler):
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
-    def process(self) -> None:
-        self.app.data_callback()
+    def block_process(self, input: np.ndarray) -> np.ndarray:
+        return self.app.data_callback(input)
 
     def halt(self) -> None:
         self.app.shutdown()
@@ -168,4 +145,5 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     app = AudioInterface(loop)
     loop.run_forever()
+    logging.info("Loop is broken")
     loop.close()

@@ -1,4 +1,5 @@
 import asyncio
+from itertools import chain
 import numpy as np
 import tkinter as tk
 
@@ -22,9 +23,12 @@ class Mixer:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = brain.Module(self.name, MixerEventHandler(self))
+        self.mod = brain.Module(
+            self.name, MixerEventHandler(self), use_block_callback=True
+        )
 
         self.in_jack = [self.mod.add_input(f"Input {i}") for i in range(self.inputs)]
+        self.cv_jack = [self.mod.add_input(f"CV {i}") for i in range(self.inputs)]
         self.out_jack = self.mod.add_output("Output", self.color)
 
         self.ui_setup()
@@ -43,10 +47,15 @@ class Mixer:
         self.root.title(self.name)
 
         self.in_tkjack = []
+        self.cv_tkjack = []
         self.in_val = []
         for i in range(self.inputs):
             tkjack = tkJack(self.root, self.mod, self.in_jack[i], f"Input {i}")
             tkjack.place(x=10, y=(90 * i + 50))
+            self.in_tkjack.append(tkjack)
+
+            tkjack = tkJack(self.root, self.mod, self.cv_jack[i], f"CV {i}")
+            tkjack.place(x=10, y=(90 * i + 80))
             self.in_tkjack.append(tkjack)
 
             in_val = tk.DoubleVar()
@@ -59,20 +68,26 @@ class Mixer:
                 variable=in_val,
                 from_=0.0,
                 to=1.0,
-            ).place(x=70, y=(75 + 90 * i))
+            ).place(x=125, y=(50 + 90 * i))
 
         self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Output")
         self.out_tkjack.place(x=10, y=375)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def data_callback(self):
-        output = np.zeros((brain.BLOCK_SIZE, brain.CHANNELS), dtype=brain.SAMPLE_TYPE)
+    def data_callback(self, input):
+        # print(input)
+        # print(input.shape)
+        # exit(0)
+        output = np.zeros((1, brain.BLOCK_SIZE, brain.CHANNELS))
         for i in range(self.inputs):
-            output += (self.in_jack[i].get_data() * self.in_val[i].get()).astype(
-                brain.SAMPLE_TYPE
-            )
-        self.out_jack.send(output.tobytes())
+            if self.mod.is_patched(self.cv_jack[i]):
+                output[0] += (
+                    input[i] * (input[i + self.inputs] / 16000)
+                ) * self.in_val[i].get()
+            else:
+                output[0] += input[i] * self.in_val[i].get()
+        return output.astype(brain.SAMPLE_TYPE)
 
     async def module_task(self):
         while True:
@@ -101,7 +116,7 @@ class Mixer:
         self.loop.stop()
 
     def patching_callback(self, state):
-        for jack in self.in_tkjack:
+        for jack in chain(self.in_tkjack, self.cv_tkjack):
             jack.patching_callback(state)
         self.out_tkjack.patching_callback(state)
 
@@ -113,8 +128,8 @@ class MixerEventHandler(brain.EventHandler):
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
-    def process(self) -> None:
-        self.app.data_callback()
+    def block_process(self, input: np.ndarray) -> np.ndarray:
+        return self.app.data_callback(input)
 
     def halt(self) -> None:
         self.app.shutdown()
