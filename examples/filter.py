@@ -5,6 +5,7 @@ import tkinter as tk
 from scipy import signal
 
 import brain
+from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_RATE
 from common import tkJack, tkKnob
 
 import logging
@@ -22,8 +23,9 @@ class Filter:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = brain.Module(self.name, FilterEventHandler(self))
+        self.mod = brain.Module(self.name, FilterEventHandler(self), use_block_callback=True)
         self.in_jack = self.mod.add_input("Audio In")
+        self.key_jack = self.mod.add_input("Key Track")
         self.out_jack = self.mod.add_output("Audio Out", color=self.color)
 
         self.filter_z = np.zeros((2, 2, 8))
@@ -46,6 +48,8 @@ class Filter:
 
         self.in_tkjack = tkJack(self.root, self.mod, self.in_jack, "Audio In")
         self.in_tkjack.place(x=10, y=50)
+        self.key_tkjack = tkJack(self.root, self.mod, self.key_jack, "Key Track")
+        self.key_tkjack.place(x=10, y=80)
 
         self.cutoff_val = tk.DoubleVar()
         self.cutoff_val.set(1000)
@@ -57,27 +61,26 @@ class Filter:
             from_=20,
             to=20000,
             log=True,
-        ).place(x=70, y=100)
+        ).place(x=70, y=140)
 
         self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Audio Out")
         self.out_tkjack.place(x=10, y=250)
 
-    def data_callback(self):
-        initial = self.mod.get_data(self.in_jack)
-        self.filter_val += 0.025 * (self.cutoff_val.get() - self.filter_val)
+    def data_callback(self, input):
+        result = np.zeros((1, BLOCK_SIZE, CHANNELS))
         self.sos = signal.butter(
-            4, self.filter_val, "low", False, "sos", brain.SAMPLE_RATE
+            4, self.cutoff_val.get(), "low", False, "sos", brain.SAMPLE_RATE
         )
-        result, self.filter_z = signal.sosfilt(
-            self.sos, initial, axis=0, zi=self.filter_z
+        result[0, :, :], self.filter_z = signal.sosfilt(
+            self.sos, input[0, :, :], axis=0, zi=self.filter_z
         )
-        self.mod.send_data(self.out_jack, result.astype(brain.SAMPLE_TYPE))
+        return result.astype(brain.SAMPLE_TYPE)
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                for jack in [self.in_tkjack, self.out_tkjack]:
-                    jack.update_display(1)
+                for jack in [self.in_tkjack, self.key_tkjack, self.out_tkjack]:
+                    jack.update_display(1.0)
 
                 self.root.update()
                 await asyncio.sleep(interval)
@@ -110,8 +113,8 @@ class FilterEventHandler(brain.EventHandler):
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
-    def process(self) -> None:
-        self.app.data_callback()
+    def block_process(self, input: np.ndarray) -> np.ndarray:
+        return self.app.data_callback(input)
 
     def halt(self) -> None:
         self.app.shutdown()
