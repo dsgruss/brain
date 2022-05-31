@@ -322,20 +322,29 @@ class Module:
                 self.event_handler.process()
 
     def block_create(self) -> None:
+        """Gathers all input data into a single matrix for block processing"""
+
+        num_inputs = len(self.inputs)
+        num_outputs = len(self.outputs)
         data = [jack.get_data() for jack in self.inputs.values()]
-        for i in range(len(data)):
+        for i in range(num_inputs):
             if data[i].shape[0] != BLOCK_SIZE:
+
+                # For now, data that arrives at a lower sample rate is simply repeated, but this
+                # will need to be changed to either interpolate incoming data, or require that all
+                # data be sent at audio rates.
+
                 expand = np.ones((BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
                 for j in range(CHANNELS):
                     expand[:, j] = expand[:, j] * data[i][0, j]
                 data[i] = expand
         result = np.array(data, dtype=SAMPLE_TYPE)
-        assert result.shape == (len(self.inputs.values()), BLOCK_SIZE, CHANNELS)
+        assert result.shape == (num_inputs, BLOCK_SIZE, CHANNELS)
         assert result.dtype == SAMPLE_TYPE
         post_process = self.event_handler.block_process(result.copy())
-        if len(self.outputs.values()) > 0:
+        if num_outputs > 0:
             assert post_process.shape == (
-                len(self.outputs.values()),
+                num_outputs,
                 BLOCK_SIZE,
                 CHANNELS,
             )
