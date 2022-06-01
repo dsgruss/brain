@@ -72,8 +72,12 @@ class Filter:
         filter_freq = self.cutoff_val.get()
         result = np.zeros((1, BLOCK_SIZE, CHANNELS))
         for i, filter in enumerate(self.filters):
+            if self.mod.is_patched(self.key_jack):
+                freq = filter_freq + 440 * 2 ** ((input[1, 0, i] / 256 - 69) / 12) - 440
+            else:
+                freq = filter_freq
             result[0, :, i] = filter.block_process(
-                input[0, :, i].astype(np.double), filter_freq
+                input[0, :, i].astype(np.double), max(1.0, freq)
             )
         return result.astype(SAMPLE_TYPE)
 
