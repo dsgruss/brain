@@ -66,12 +66,13 @@ cdef class LadderFilter:
         for i in range(4):
             x[i] += dt * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]) / 6
 
-    def block_process(self, double[:] input, double filter_freq):
+    def block_process(self, double[:] input, double filter_freq, double resonance):
         cdef int block_size = BLOCK_SIZE
 
         result = np.zeros((BLOCK_SIZE, ), dtype=np.double)
         cdef double[:] result_view = result
         for j in range(block_size):
             self.setCutoff(filter_freq)
+            self.resonance = resonance
             result_view[j] = self.process(input[j], 1 / SAMPLE_RATE)
         return result

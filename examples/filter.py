@@ -63,13 +63,25 @@ class Filter:
             from_=20,
             to=8000,
             log=True,
-        ).place(x=70, y=140)
+        ).place(x=35, y=140)
+
+        self.resonance_val = tk.DoubleVar()
+        self.resonance_val.set(0.5)
+        tkKnob(
+            self.root,
+            "Resonance",
+            color=self.color,
+            variable=self.resonance_val,
+            from_=0.0,
+            to=1.0,
+        ).place(x=105, y=140)
 
         self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Audio Out")
         self.out_tkjack.place(x=10, y=250)
 
     def data_callback(self, input):
         filter_freq = self.cutoff_val.get()
+        resonance = 10 * self.resonance_val.get() ** 2
         result = np.zeros((1, BLOCK_SIZE, CHANNELS))
         for i, filter in enumerate(self.filters):
             if self.mod.is_patched(self.key_jack):
@@ -77,7 +89,7 @@ class Filter:
             else:
                 freq = filter_freq
             result[0, :, i] = filter.block_process(
-                input[0, :, i].astype(np.double), max(1.0, freq)
+                input[0, :, i].astype(np.double), max(1.0, freq), resonance
             )
         return result.astype(SAMPLE_TYPE)
 
