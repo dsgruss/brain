@@ -114,7 +114,7 @@ class ASREnvelope:
 
     async def output_task(self):
         t = time.perf_counter()
-        output = np.zeros((1, brain.CHANNELS), dtype=brain.SAMPLE_TYPE)
+        output = np.zeros((brain.BLOCK_SIZE, brain.CHANNELS))
         while True:
             dt = time.perf_counter() - t
             while dt > (1 / brain.PACKET_RATE):
@@ -124,12 +124,17 @@ class ASREnvelope:
                 rstep = 16000 / brain.PACKET_RATE / rtime
                 for i, v in enumerate(self.gates):
                     if self.level[i] < v:
+                        output[:, i] = np.linspace(
+                            self.level[i], self.level[i] + astep, brain.BLOCK_SIZE
+                        ).clip(max=v)
                         self.level[i] = min(v, self.level[i] + astep)
-                    elif self.level[i] > v:
+                    else:
+                        output[:, i] = np.linspace(
+                            self.level[i], self.level[i] - rstep, brain.BLOCK_SIZE
+                        ).clip(min=v)
                         self.level[i] = max(v, self.level[i] - rstep)
-                    output[0, i] = round(self.level[i])
 
-                self.mod.send_data(self.asr_jack, output)
+                self.mod.send_data(self.asr_jack, output.astype(brain.SAMPLE_TYPE))
                 t += 1 / brain.PACKET_RATE
                 dt = time.perf_counter() - t
 
