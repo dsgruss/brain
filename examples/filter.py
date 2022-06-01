@@ -107,7 +107,7 @@ class Filter:
         self.loop.stop()
 
     def patching_callback(self, state):
-        for jack in [self.in_tkjack, self.out_tkjack]:
+        for jack in [self.in_tkjack, self.key_tkjack, self.out_tkjack]:
             jack.patching_callback(state)
 
 
