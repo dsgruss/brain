@@ -2,11 +2,12 @@ import asyncio
 import numpy as np
 import tkinter as tk
 
-from scipy import signal
 
 import brain
-from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_RATE
+from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
 from common import tkJack, tkKnob
+
+from filter_core import LadderFilter
 
 import logging
 
@@ -23,13 +24,14 @@ class Filter:
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
 
-        self.mod = brain.Module(self.name, FilterEventHandler(self), use_block_callback=True)
+        self.mod = brain.Module(
+            self.name, FilterEventHandler(self), use_block_callback=True
+        )
         self.in_jack = self.mod.add_input("Audio In")
         self.key_jack = self.mod.add_input("Key Track")
         self.out_jack = self.mod.add_output("Audio Out", color=self.color)
 
-        self.filter_z = np.zeros((2, 2, 8))
-        self.filter_val = 2
+        self.filters = [LadderFilter() for _ in range(CHANNELS)]
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -59,7 +61,7 @@ class Filter:
             color=self.color,
             variable=self.cutoff_val,
             from_=20,
-            to=20000,
+            to=16000,
             log=True,
         ).place(x=70, y=140)
 
@@ -67,14 +69,13 @@ class Filter:
         self.out_tkjack.place(x=10, y=250)
 
     def data_callback(self, input):
+        filter_freq = self.cutoff_val.get()
         result = np.zeros((1, BLOCK_SIZE, CHANNELS))
-        self.sos = signal.butter(
-            4, self.cutoff_val.get(), "low", False, "sos", brain.SAMPLE_RATE
-        )
-        result[0, :, :], self.filter_z = signal.sosfilt(
-            self.sos, input[0, :, :], axis=0, zi=self.filter_z
-        )
-        return result.astype(brain.SAMPLE_TYPE)
+        for i, filter in enumerate(self.filters):
+            result[0, :, i] = filter.block_process(
+                input[0, :, i].astype(np.double), filter_freq
+            )
+        return result.astype(SAMPLE_TYPE)
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
