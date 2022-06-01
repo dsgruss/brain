@@ -86,7 +86,7 @@ class Oscilloscope:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                self.data_tkjack.update_display(1)
+                self.data_tkjack.update_display()
 
                 for i in range(brain.CHANNELS):
                     while (

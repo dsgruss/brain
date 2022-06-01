@@ -91,8 +91,8 @@ class ASREnvelope:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                self.gate_tkjack.update_display(max(self.gates) / 16000)
-                self.asr_tkjack.update_display(max(self.level) / 16000)
+                self.gate_tkjack.update_display()
+                self.asr_tkjack.update_display()
 
                 self.root.update()
                 await asyncio.sleep(interval)

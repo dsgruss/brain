@@ -36,7 +36,7 @@ class tkJack(tk.Frame):
     def patching_callback(self, state: PatchState) -> None:
         self.patch_state = state
 
-    def update_display(self, display_value: float) -> None:
+    def update_display(self) -> None:
         if self.patch_state in (PatchState.IDLE, PatchState.PATCH_ENABLED):
             if self.patch_state == PatchState.IDLE:
                 intensity = 100
@@ -49,7 +49,7 @@ class tkJack(tk.Frame):
                 self.set_color(
                     self.mod.get_jack_color(self.jack),
                     100,
-                    min(display_value * intensity, 100),
+                    min(self.mod.get_jack_level(self.jack) * intensity, 100),
                 )
 
             if self.patch_state == PatchState.PATCH_ENABLED:

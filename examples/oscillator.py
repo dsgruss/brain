@@ -76,7 +76,7 @@ class Oscillator:
                     self.saw_tkjack,
                     self.sqr_tkjack,
                 ]:
-                    jack.update_display(1)
+                    jack.update_display()
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:

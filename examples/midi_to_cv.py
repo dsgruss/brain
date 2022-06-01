@@ -80,12 +80,9 @@ class MidiToCV:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                self.note_tkjack.update_display(1)
-                if any(v.on for v in self.voices):
-                    self.gate_tkjack.update_display(1)
-                else:
-                    self.gate_tkjack.update_display(0)
-                self.mdwh_tkjack.update_display(self.mod_wheel / 128)
+                self.note_tkjack.update_display()
+                self.gate_tkjack.update_display()
+                self.mdwh_tkjack.update_display()
 
                 self.root.update()
                 await asyncio.sleep(interval)

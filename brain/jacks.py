@@ -24,6 +24,9 @@ class Jack:
     def get_color(self) -> int:
         raise NotImplementedError
 
+    def get_level(self) -> float:
+        raise NotImplementedError
+
 
 class InputJack(Jack):
     """An input jack which receives data from an output jack over the network. This is not
@@ -95,6 +98,12 @@ class InputJack(Jack):
         else:
             return self.color
 
+    def get_level(self) -> float:
+        if not self.is_patched():
+            return 0
+        else:
+            return np.clip(np.amax(self.last_seen_data) / 8000, 0, 1)
+
 
 class OutputJack(Jack):
     """An output jack which sends data to input jacks over the network. This is not
@@ -113,16 +122,18 @@ class OutputJack(Jack):
         self.connected_jacks: Set[Tuple[str, str]] = set()
         self.jack_server = OutputJackServer(address)
         self.endpoint = self.jack_server.endpoint
+        self.level = 0
 
         super().__init__(name)
 
-    def send(self, data: bytes) -> None:
+    def send(self, data: np.ndarray) -> None:
         """Send data out through this jack. Caller is responsible for maintaining packet timing.
         Currently, this sends data out to the network at all times.
 
-        :data: Data to be sent in raw bytes
+        :data: Data to be sent as an ndarray
         """
-        self.jack_server.datagram_send(data)
+        self.level = np.amax(data)
+        self.jack_server.datagram_send(data.tobytes())
 
     def connect(self, input_uuid, input_id):
         self.connected_jacks.add((input_uuid, input_id))
@@ -148,3 +159,6 @@ class OutputJack(Jack):
 
     def get_color(self) -> int:
         return self.color
+
+    def get_level(self) -> float:
+        return np.clip(self.level / 8000, 0, 1)

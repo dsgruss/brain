@@ -117,6 +117,16 @@ class Module:
         """Returns the assigned HSV hue of the jack"""
         return jack.get_color()
 
+    def get_jack_level(self, jack: Jack) -> float:
+        """Returns the magnitude of the data last sent or recieved over this jack. For
+        jacks operating at audio rates, this returns the maximum value over a single block.
+
+        :param jack: The specific jack instance
+
+        :return: Value from 0 to 1
+        """
+        return jack.get_level()
+
     def get_patch_state(self) -> PatchState:
         """Retrieves the global patch state"""
         return self.global_state.patch_state
@@ -159,7 +169,7 @@ class Module:
         :param data: An array of shape (X, ``brain.CHANNELS``) of data type ``brain.SAMPLE_TYPE``,
             where X is the number of samples sent in a packet window
         """
-        jack.send(data.tobytes())
+        jack.send(data)
 
     def set_patch_enabled(self, jack: Jack, state: bool) -> None:
         """Indicate the jack is available for patching (for instance, the patch button is held down)

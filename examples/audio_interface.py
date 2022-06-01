@@ -83,7 +83,7 @@ class AudioInterface:
     async def ui_task(self, interval=(1 / 60)):
         while True:
             try:
-                self.in_tkjack.update_display(1.0)
+                self.in_tkjack.update_display()
 
                 self.root.update()
                 await asyncio.sleep(interval)

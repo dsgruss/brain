@@ -98,8 +98,8 @@ class Mixer:
         while True:
             try:
                 for in_tkjack in self.in_tkjack:
-                    in_tkjack.update_display(1.0)
-                self.out_tkjack.update_display(1.0)
+                    in_tkjack.update_display()
+                self.out_tkjack.update_display()
 
                 self.root.update()
                 await asyncio.sleep(interval)

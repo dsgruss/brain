@@ -85,7 +85,7 @@ class Filter:
         while True:
             try:
                 for jack in [self.in_tkjack, self.key_tkjack, self.out_tkjack]:
-                    jack.update_display(1.0)
+                    jack.update_display()
 
                 self.root.update()
                 await asyncio.sleep(interval)
