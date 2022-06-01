@@ -61,7 +61,7 @@ class Filter:
             color=self.color,
             variable=self.cutoff_val,
             from_=20,
-            to=16000,
+            to=8000,
             log=True,
         ).place(x=70, y=140)
 
