@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import numpy as np
 import sounddevice as sd
@@ -15,13 +16,12 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 class AudioInterface:
     name = "Audio Interface"
-    color = 240  # hue
-
     grid_size = (4, 9)
-    grid_pos = (32, 0)
 
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, args: argparse.Namespace):
         self.loop = loop
+        self.grid_pos = (args.gridx, args.gridy)
+        self.color = args.color
 
         hostapis = {api["name"]: api for api in sd.query_hostapis()}
         for api in ["Windows WASAPI", "MME", "Windows DirectSound"]:
@@ -142,8 +142,21 @@ class AudioInterfaceEventHandler(brain.EventHandler):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Audio Interface")
+    parser.add_argument(
+        "--gridx", default=32, type=int, help="Window X position in the grid"
+    )
+    parser.add_argument(
+        "--gridy", default=0, type=int, help="Window Y position in the grid"
+    )
+    parser.add_argument(
+        "--color", default=240, type=int, help="HSV Hue color of the interface"
+    )
+    parser.add_argument("--id", default=0, type=int, help="Unique identifier postfix")
+    args = parser.parse_args()
+
     loop = asyncio.get_event_loop()
-    app = AudioInterface(loop)
+    app = AudioInterface(loop, args)
     loop.run_forever()
     logging.info("Loop is broken")
     loop.close()

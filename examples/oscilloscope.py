@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import matplotlib
 import numpy as np
@@ -22,10 +23,11 @@ class Oscilloscope:
     name = "Oscilloscope"
     time_div = 4.0  # sec
     grid_size = (8, 9)
-    grid_pos = (28, 9)
 
-    def __init__(self, loop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, args: argparse.Namespace):
         self.loop = loop
+        self.grid_pos = (args.gridx, args.gridy)
+        self.color = args.color
 
         self.mod = brain.Module(self.name, OscilloscopeEventHandler(self))
         self.data_jack = self.mod.add_input("Data")
@@ -192,7 +194,20 @@ class OscilloscopeEventHandler(brain.EventHandler):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Oscilloscope")
+    parser.add_argument(
+        "--gridx", default=28, type=int, help="Window X position in the grid"
+    )
+    parser.add_argument(
+        "--gridy", default=9, type=int, help="Window Y position in the grid"
+    )
+    parser.add_argument(
+        "--color", default=180, type=int, help="HSV Hue color of the interface"
+    )
+    parser.add_argument("--id", default=0, type=int, help="Unique identifier postfix")
+    args = parser.parse_args()
+
     loop = asyncio.get_event_loop()
-    app = Oscilloscope(loop)
+    app = Oscilloscope(loop, args)
     loop.run_forever()
     loop.close()

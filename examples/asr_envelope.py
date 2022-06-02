@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import numpy as np
 import tkinter as tk
@@ -14,13 +15,13 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 class ASREnvelope:
 
     name = "ASR Envelope Generator"
-    color = 235  # hue
 
     grid_size = (4, 9)
-    grid_pos = (4, 0)
 
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, args: argparse.Namespace):
         self.loop = loop
+        self.grid_pos = (args.gridx, args.gridy)
+        self.color = args.color
 
         self.mod = brain.Module(self.name, ASREnvelopeEventHandler(self))
 
@@ -156,7 +157,20 @@ class ASREnvelopeEventHandler(brain.EventHandler):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="ASR Envelope Generator")
+    parser.add_argument(
+        "--gridx", default=4, type=int, help="Window X position in the grid"
+    )
+    parser.add_argument(
+        "--gridy", default=0, type=int, help="Window Y position in the grid"
+    )
+    parser.add_argument(
+        "--color", default=235, type=int, help="HSV Hue color of the interface"
+    )
+    parser.add_argument("--id", default=0, type=int, help="Unique identifier postfix")
+    args = parser.parse_args()
+
     loop = asyncio.get_event_loop()
-    app = ASREnvelope(loop)
+    app = ASREnvelope(loop, args)
     loop.run_forever()
     loop.close()

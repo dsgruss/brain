@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import mido
 import numpy as np
@@ -27,13 +28,12 @@ class MidiToCV:
     timestamp = 0
 
     name = "Midi to CV converter"
-    color = 280  # hue
-
     grid_size = (4, 9)
-    grid_pos = (0, 0)
 
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, args: argparse.Namespace):
         self.loop = loop
+        self.grid_pos = (args.gridx, args.gridy)
+        self.color = args.color
 
         logging.info("Opening all midi inputs by default...")
         for inp in mido.get_input_names():
@@ -177,7 +177,20 @@ class MidiToCVEventHandler(brain.EventHandler):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Midi to CV converter")
+    parser.add_argument(
+        "--gridx", default=0, type=int, help="Window X position in the grid"
+    )
+    parser.add_argument(
+        "--gridy", default=0, type=int, help="Window Y position in the grid"
+    )
+    parser.add_argument(
+        "--color", default=280, type=int, help="HSV Hue color of the interface"
+    )
+    parser.add_argument("--id", default=0, type=int, help="Unique identifier postfix")
+    args = parser.parse_args()
+
     loop = asyncio.get_event_loop()
-    app = MidiToCV(loop)
+    app = MidiToCV(loop, args)
     loop.run_forever()
     loop.close()

@@ -1,7 +1,7 @@
+import argparse
 import asyncio
 import numpy as np
 import tkinter as tk
-
 
 import brain
 from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
@@ -16,13 +16,12 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 class Filter:
     name = "Filter"
-    color = 180  # hue
-
     grid_size = (4, 9)
-    grid_pos = (16, 0)
 
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, args: argparse.Namespace):
         self.loop = loop
+        self.grid_pos = (args.gridx, args.gridy)
+        self.color = args.color
 
         self.mod = brain.Module(
             self.name, FilterEventHandler(self), use_block_callback=True
@@ -138,7 +137,20 @@ class FilterEventHandler(brain.EventHandler):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Filter")
+    parser.add_argument(
+        "--gridx", default=16, type=int, help="Window X position in the grid"
+    )
+    parser.add_argument(
+        "--gridy", default=0, type=int, help="Window Y position in the grid"
+    )
+    parser.add_argument(
+        "--color", default=180, type=int, help="HSV Hue color of the interface"
+    )
+    parser.add_argument("--id", default=0, type=int, help="Unique identifier postfix")
+    args = parser.parse_args()
+
     loop = asyncio.get_event_loop()
-    app = Filter(loop)
+    app = Filter(loop, args)
     loop.run_forever()
     loop.close()
