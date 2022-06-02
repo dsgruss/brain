@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 from brain import BLOCK_SIZE, SAMPLE_RATE
 
@@ -74,5 +75,5 @@ cdef class LadderFilter:
         for j in range(block_size):
             self.setCutoff(filter_freq)
             self.resonance = resonance
-            result_view[j] = self.process(input[j], 1 / SAMPLE_RATE)
+            result_view[j] = self.process(input[j] + 1e-6 * random.random(), 1 / SAMPLE_RATE)
         return result

@@ -85,7 +85,7 @@ class Filter:
         result = np.zeros((1, BLOCK_SIZE, CHANNELS))
         for i, filter in enumerate(self.filters):
             if self.mod.is_patched(self.key_jack):
-                freq = filter_freq + 440 * 2 ** ((input[1, 0, i] / 256 - 69) / 12) - 440
+                freq = filter_freq * 2 ** ((input[1, 0, i] / 256 - 69) / 12)
             else:
                 freq = filter_freq
             result[0, :, i] = filter.block_process(
