@@ -59,7 +59,7 @@ class Oscilloscope:
         w = self.grid_size[0] * 50 - 10
         h = self.grid_size[1] * 50
         x = self.grid_pos[0] * 50 + 10 + 5
-        y = self.grid_pos[1] * 50 + 50
+        y = self.grid_pos[1] * 50 + 10
         self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.root.title(self.name)
@@ -199,7 +199,7 @@ if __name__ == "__main__":
         "--gridx", default=28, type=int, help="Window X position in the grid"
     )
     parser.add_argument(
-        "--gridy", default=9, type=int, help="Window Y position in the grid"
+        "--gridy", default=10, type=int, help="Window Y position in the grid"
     )
     parser.add_argument(
         "--color", default=180, type=int, help="HSV Hue color of the interface"
