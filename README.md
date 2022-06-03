@@ -9,7 +9,7 @@ This subproject in particular contains python implementations of the control sys
 prototype software modules. This is more or less used as a "staging ground" for different module and
 protocol concepts before committing them to microcontroller code and physical hardware.
 
-The primary interface to the libary is in the `brain.Module` object, which mediates all of the
+The primary interface to the library is in the `brain.Module` object, which mediates all of the
 patching and dataflow between all other modules on the network. Typically, a module only needs to be
 written as a processor on the input state to the output state and handle the associated user
 interface.
