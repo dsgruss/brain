@@ -41,3 +41,13 @@ This project is currently a very early work-in-progress alpha, which means that 
 interfaces may change, the communication protocols are still in flux, and it has not been completely
 tested to work in all environments. Consider it more of an proof-of-concept experiment than a
 completed library.
+
+Todo
+----
+
+[ ] Move broadcasts to multicast (and find a way to test locally)
+[ ] Add consensus algorithm for patch states
+[ ] Add state capture and restore
+[ ] Add heartbeats for patch status and for global patch updates
+[ ] Change from build script to actual build process
+[ ] Come up with a better name
