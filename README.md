@@ -1,3 +1,6 @@
+Introduction
+------------
+
 This project is part of an experiment in creating a
 [polyphonic](https://en.wikipedia.org/wiki/Polyphony) version of a [modular
 synthesizer](https://en.wikipedia.org/wiki/Modular_synthesizer) using ethernet communication. The
