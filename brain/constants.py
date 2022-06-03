@@ -3,7 +3,7 @@ import numpy as np
 from typing import Final
 
 #: Preferred communication subnet in case multiple network interfaces are present
-PREFERRED_BROADCAST: Final = "10.255.255.255"
+PREFERRED_BROADCAST: Final = "127.255.255.255"
 
 #: Port used to establish the global state and create new patch connections
 PATCH_PORT: Final = 19874
