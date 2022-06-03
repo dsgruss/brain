@@ -72,8 +72,8 @@ class Module:
             if netifaces.AF_INET in interfaces_details:
                 for detail in interfaces_details[netifaces.AF_INET]:
                     addresses.append(detail)
+                    logging.info("Address found: " + str(detail))
 
-        logging.info("Addresses found: " + str(addresses))
         if len(addresses) == 0:
             return
 
