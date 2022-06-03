@@ -45,9 +45,9 @@ completed library.
 Todo
 ----
 
-[ ] Move broadcasts to multicast (and find a way to test locally)
-[ ] Add consensus algorithm for patch states
-[ ] Add state capture and restore
-[ ] Add heartbeats for patch status and for global patch updates
-[ ] Change from build script to actual build process
-[ ] Come up with a better name
+- [ ] Move broadcasts to multicast (and find a way to test locally)
+- [ ] Add consensus algorithm for patch states
+- [ ] Add state capture and restore
+- [ ] Add heartbeats for patch status and for global patch updates
+- [ ] Change from build script to actual build process
+- [ ] Come up with a better name
