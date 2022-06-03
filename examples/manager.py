@@ -1,6 +1,8 @@
 import asyncio
-import os
-import subprocess
+import honcho.process
+import honcho.printer
+import multiprocessing
+import queue
 import tkinter as tk
 
 from collections import Counter
@@ -9,7 +11,11 @@ import brain
 
 import logging
 
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
+logging.basicConfig(
+    format="%(asctime)s manager              | %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+    level=logging.DEBUG,
+)
 
 
 class Manager:
@@ -46,10 +52,13 @@ class Manager:
         self.gridy = 0
         self.color_idx = 0
         self.process_counter = Counter()
+        self.events = multiprocessing.Queue()
+        self.printer = honcho.printer.Printer(width=20)
 
         self.ui_setup()
         loop.create_task(self.ui_task())
         loop.create_task(self.module_task())
+        loop.create_task(self.printer_task())
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -93,23 +102,43 @@ class Manager:
             self.mod.update()
             await asyncio.sleep(1 / brain.PACKET_RATE)
 
+    async def printer_task(self, interval=(1 / 60)):
+        while True:
+            try:
+                msg = self.events.get(timeout=0.1)
+            except queue.Empty:
+                await asyncio.sleep(interval)
+                continue
+
+            if msg.type == "line":
+                self.printer.write(msg)
+            elif msg.type == "start":
+                logging.info("%s started (pid=%s)" % (msg.name, msg.data["pid"]))
+            elif msg.type == "stop":
+                logging.info("%s stopped (rc=%s)" % (msg.name, msg.data["returncode"]))
+
     def launch(self, dest, id):
-        subprocess.Popen(
-            [
-                "python",
-                dest,
-                "--gridx",
-                str(self.gridx),
-                "--gridy",
-                str(self.gridy),
-                "--color",
-                str(self.colors[self.color_idx][2]),
-                "--id",
-                str(self.process_counter[id]),
-            ],
-            env=os.environ.copy(),
-            shell=True,
+        p = multiprocessing.Process(
+            target=honcho.process.Process(
+                [
+                    "python",
+                    dest,
+                    "--gridx",
+                    str(self.gridx),
+                    "--gridy",
+                    str(self.gridy),
+                    "--color",
+                    str(self.colors[self.color_idx][2]),
+                    "--id",
+                    str(self.process_counter[id]),
+                ],
+                name=id + "." + str(self.process_counter[id]),
+                colour=self.colors[self.color_idx][1],
+            ).run,
+            args=(self.events,),
         )
+        p.start()
+
         self.gridx += 4
         if self.gridx == 36:
             self.gridx = 4
@@ -135,9 +164,6 @@ class ManagerEventHandler(brain.EventHandler):
 
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
-
-    def halt(self) -> None:
-        self.app.shutdown()
 
 
 if __name__ == "__main__":
