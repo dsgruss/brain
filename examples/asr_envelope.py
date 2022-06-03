@@ -23,7 +23,11 @@ class ASREnvelope:
         self.grid_pos = (args.gridx, args.gridy)
         self.color = args.color
 
-        self.mod = brain.Module(self.name, ASREnvelopeEventHandler(self))
+        self.mod = brain.Module(
+            self.name,
+            ASREnvelopeEventHandler(self),
+            id="root:virtual_examples:asr_envelope:" + str(args.id),
+        )
 
         self.gate_jack = self.mod.add_input("Gate In")
         self.asr_jack = self.mod.add_output("ASR Envelope", self.color)

@@ -3,6 +3,8 @@ import os
 import subprocess
 import tkinter as tk
 
+from collections import Counter
+
 import brain
 
 import logging
@@ -31,17 +33,19 @@ class Manager:
         ]
 
         self.processes = [
-            ("midi_to_cv", "examples/midi_to_cv.py"),
-            ("asr_envelope", "examples/asr_envelope.py"),
-            ("oscillator", "examples/oscillator.py"),
-            ("mixer", "examples/mixer.py"),
-            ("filter", "examples/filter.py"),
-            ("audio_interface", "examples/audio_interface.py"),
-            ("oscilloscope", "examples/oscilloscope.py"),
+            ("midi_to_cv", "examples/midi_to_cv.py", "Midi to CV"),
+            ("asr_envelope", "examples/asr_envelope.py", "ASR Envelope"),
+            ("oscillator", "examples/oscillator.py", "Oscillator"),
+            ("mixer", "examples/mixer.py", "Mixer"),
+            ("filter", "examples/filter.py", "Filter"),
+            ("audio_interface", "examples/audio_interface.py", "Audio Interface"),
+            ("oscilloscope", "examples/oscilloscope.py", "Oscilloscope"),
         ]
 
         self.gridx = 0
         self.gridy = 0
+        self.color_idx = 0
+        self.process_counter = Counter()
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -65,8 +69,8 @@ class Manager:
         for i, process in enumerate(self.processes):
             tk.Button(
                 self.root,
-                text=process[0],
-                command=lambda x=process[1]: self.launch(x),
+                text=process[2],
+                command=lambda x=process[1], y=process[0]: self.launch(x, y),
                 width=22,
             ).place(x=10, y=100 + 30 * i)
 
@@ -89,9 +93,20 @@ class Manager:
             self.mod.update()
             await asyncio.sleep(1 / brain.PACKET_RATE)
 
-    def launch(self, dest):
+    def launch(self, dest, id):
         subprocess.Popen(
-            ["python", dest, "--gridx", str(self.gridx), "--gridy", str(self.gridy)],
+            [
+                "python",
+                dest,
+                "--gridx",
+                str(self.gridx),
+                "--gridy",
+                str(self.gridy),
+                "--color",
+                str(self.colors[self.color_idx][2]),
+                "--id",
+                str(self.process_counter[id]),
+            ],
             env=os.environ.copy(),
             shell=True,
         )
@@ -99,6 +114,8 @@ class Manager:
         if self.gridx == 36:
             self.gridx = 4
             self.gridy += 10
+        self.color_idx = (self.color_idx + 1) % len(self.colors)
+        self.process_counter[id] += 1
 
     def shutdown(self):
         for task in asyncio.all_tasks():

@@ -34,7 +34,10 @@ class AudioInterface:
         logging.info("Using device " + sd.query_devices(self.default_device)["name"])
 
         self.mod = brain.Module(
-            self.name, AudioInterfaceEventHandler(self), use_block_callback=True
+            self.name,
+            AudioInterfaceEventHandler(self),
+            use_block_callback=True,
+            id="root:virtual_examples:audio_interface:" + str(args.id),
         )
         self.in_jack = self.mod.add_input("Audio In")
         self.audio_buffer = Queue(brain.BUFFER_SIZE)

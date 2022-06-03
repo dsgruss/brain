@@ -29,7 +29,11 @@ class Oscilloscope:
         self.grid_pos = (args.gridx, args.gridy)
         self.color = args.color
 
-        self.mod = brain.Module(self.name, OscilloscopeEventHandler(self))
+        self.mod = brain.Module(
+            self.name,
+            OscilloscopeEventHandler(self),
+            id="root:virtual_examples:oscilloscope:" + str(args.id),
+        )
         self.data_jack = self.mod.add_input("Data")
 
         self.ui_setup()

@@ -39,7 +39,11 @@ class MidiToCV:
         for inp in mido.get_input_names():
             self.loop.create_task(self.midi_task(mido.open_input(inp)))
 
-        self.mod = brain.Module(self.name, MidiToCVEventHandler(self))
+        self.mod = brain.Module(
+            self.name,
+            MidiToCVEventHandler(self),
+            id="root:virtual_examples:midi_to_cv:" + str(args.id),
+        )
 
         self.voices = [Voice(0, False, 0) for _ in range(brain.CHANNELS)]
         self.mod_wheel = 0

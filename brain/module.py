@@ -34,7 +34,7 @@ class Module:
     on the python module level rather than the class level, but it is included here in order to
     maintain parity with the C++/static implementation.
 
-    :param name: The name of the module
+    :param name: The human-readable name of the module
 
     :param event_handler: Instance of an ``EventHandler`` used to process application events. The
         application should either create its own class that inherits from ``EventHandler`` or create
@@ -42,15 +42,24 @@ class Module:
 
     :param use_block_callback: If ``True``, then incoming data is merged and interpolated into a
         single matrix for block processing.
+
+    :param id: Unique identifier of the module. This should be of the form
+        ``"group:product:instance_number"``, but anything that is globally unique works as well. In
+        the physical world, this is unique for each module and is used to identify a specific one in
+        the case of saving and restoring presets.
     """
 
     def __init__(
-        self, name: str, event_handler: EventHandler = None, use_block_callback=False
+        self,
+        name: str,
+        event_handler: EventHandler = None,
+        use_block_callback: bool = False,
+        id: ModuleUuid = None,
     ):
         self.name = name
         self.event_handler = event_handler or EventHandler()
         self.use_block_callback = use_block_callback
-        self.uuid: ModuleUuid = str(uuid.uuid4())
+        self.uuid: ModuleUuid = id or str(uuid.uuid4())
         self.global_state = GlobalState(PatchState.IDLE, {}, {})
 
         self.inputs: Dict[str, InputJack] = {}

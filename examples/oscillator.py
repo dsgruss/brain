@@ -22,7 +22,11 @@ class Oscillator:
         self.grid_pos = (args.gridx, args.gridy)
         self.color = args.color
 
-        self.mod = brain.Module(self.name, OscillatorEventHandler(self))
+        self.mod = brain.Module(
+            self.name,
+            OscillatorEventHandler(self),
+            id="root:virtual_examples:oscillator:" + str(args.id),
+        )
 
         self.note_jack = self.mod.add_input("Note In")
         self.sin_jack = self.mod.add_output("Sin", self.color)

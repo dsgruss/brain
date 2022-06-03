@@ -23,7 +23,10 @@ class Mixer:
         self.color = args.color
 
         self.mod = brain.Module(
-            self.name, MixerEventHandler(self), use_block_callback=True
+            self.name,
+            MixerEventHandler(self),
+            use_block_callback=True,
+            id="root:virtual_examples:mixer:" + str(args.id),
         )
 
         self.in_jack = [self.mod.add_input(f"Input {i}") for i in range(self.inputs)]

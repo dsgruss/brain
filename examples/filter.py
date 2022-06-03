@@ -24,7 +24,10 @@ class Filter:
         self.color = args.color
 
         self.mod = brain.Module(
-            self.name, FilterEventHandler(self), use_block_callback=True
+            self.name,
+            FilterEventHandler(self),
+            use_block_callback=True,
+            id="root:virtual_examples:filter:" + str(args.id),
         )
         self.in_jack = self.mod.add_input("Audio In")
         self.key_jack = self.mod.add_input("Key Track")
