@@ -11,7 +11,7 @@ Welcome to brain's documentation!
    :caption: Contents:
 
 .. autoclass:: brain.Module
-   :members: update, add_input, add_output, get_jack_color, get_patch_state, get_data, is_input, is_patched, is_patch_member, send_data, set_patch_enabled, halt_all
+   :members: update, add_input, add_output, get_jack_color, get_patch_state, get_data, is_input, is_patched, is_patch_member, send_data, set_patch_enabled, halt_all, get_all_snapshots
 
 .. autoclass:: brain.EventHandler
    :members:

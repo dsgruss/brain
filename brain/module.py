@@ -23,7 +23,14 @@ from .interfaces import (
     PatchState,
 )
 from .jacks import Jack, InputJack, OutputJack
-from .parsers import Message, MessageType
+from .parsers import (
+    Halt,
+    Message,
+    PatchConnection,
+    SnapshotRequest,
+    SnapshotResponse,
+    Update,
+)
 from .servers import PatchServer
 
 
@@ -205,9 +212,7 @@ class Module:
             if jack.patch_enabled
         ]
         self.patch_server.message_send(
-            Message(
-                self.uuid, MessageType.UPDATE, LocalState(held_inputs, held_outputs)
-            )
+            Update(self.uuid, LocalState(held_inputs, held_outputs))
         )
         self.global_state.held_inputs[self.uuid] = held_inputs
         self.global_state.held_outputs[self.uuid] = held_outputs
@@ -218,7 +223,7 @@ class Module:
 
     def halt_all(self) -> None:
         """Sends a halt directive to all connected modules"""
-        self.patch_server.message_send(Message("GLOBAL", MessageType.HALT))
+        self.patch_server.message_send(Halt("GLOBAL"))
 
     def update_patch_state(self):
         """Manages changes in the global state"""
@@ -372,9 +377,10 @@ class Module:
                 self.send_data(jack, post_process[i, :, :])
 
     def event_process(self, message: Message):
-        if message.type == MessageType.HALT:
+        if isinstance(message, Halt):
             self.halt_callback()
-        if message.type == MessageType.UPDATE:
+
+        if isinstance(message, Update):
             if message.local_state is not None:
                 self.global_state.held_inputs[
                     message.uuid
@@ -384,3 +390,33 @@ class Module:
                 ] = message.local_state.held_outputs
 
                 self.update_patch_state()
+
+        if isinstance(message, SnapshotRequest):
+            patches = []
+            for id, jack in self.inputs.items():
+                if jack.is_patched():
+                    patches.append(
+                        PatchConnection(
+                            self.uuid,
+                            id,
+                            jack.connected_jack[0],
+                            jack.connected_jack[1],
+                        )
+                    )
+            for id, jack in self.outputs.items():
+                for input_uuid, input_jack_id in jack.connected_jacks:
+                    patches.append(
+                        PatchConnection(input_uuid, input_jack_id, self.uuid, id)
+                    )
+            self.patch_server.message_send(
+                SnapshotResponse(self.uuid, self.event_handler.get_snapshot(), patches)
+            )
+
+        if isinstance(message, SnapshotResponse):
+            self.event_handler.recieved_snapshot(
+                message.uuid, message.data, message.patched
+            )
+
+    def get_all_snapshots(self):
+        """Send a snapshot request to all modules"""
+        self.patch_server.message_send(SnapshotRequest(self.uuid))

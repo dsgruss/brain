@@ -1,22 +1,41 @@
 import json
 
-from enum import Enum, auto
 from dataclasses import dataclass
-from typing import Union
+from typing import List, Union
 
-from brain.interfaces import HeldInputJack, HeldOutputJack, LocalState, ModuleUuid
-
-
-class MessageType(Enum):
-    UPDATE = auto()
-    HALT = auto()
+from brain.interfaces import (
+    HeldInputJack,
+    HeldOutputJack,
+    LocalState,
+    ModuleUuid,
+    PatchConnection,
+)
 
 
 @dataclass
 class Message:
     uuid: ModuleUuid
-    type: MessageType
-    local_state: Union[LocalState, None] = None
+
+
+@dataclass
+class Update(Message):
+    local_state: LocalState
+
+
+@dataclass
+class SnapshotRequest(Message):
+    pass
+
+
+@dataclass
+class SnapshotResponse(Message):
+    data: bytes
+    patched: List[PatchConnection]
+
+
+@dataclass
+class Halt(Message):
+    pass
 
 
 class MessageParser:
@@ -53,18 +72,38 @@ class MessageParser:
                 state.held_outputs.append(
                     HeldOutputJack(response["uuid"], d["id"], d["color"], d["port"])
                 )
-            return Message(response["uuid"], MessageType.UPDATE, state)
+            return Update(response["uuid"], state)
+
+        if response["message"] == "SNAPSHOTREQUEST":
+            return SnapshotRequest(response["uuid"])
+
+        if response["message"] == "SNAPSHOTRESPONSE":
+            return SnapshotResponse(
+                response["uuid"],
+                response["data"].encode(),
+                [
+                    PatchConnection(
+                        p["input_uuid"],
+                        p["input_jack_id"],
+                        p["output_uuid"],
+                        p["output_jack_id"],
+                    )
+                    for p in response["patched"]
+                ],
+            )
+
         if response["message"] == "HALT":
-            return Message(response["uuid"], MessageType.HALT)
+            return Halt(response["uuid"])
         return None
 
     def create_directive(self, message: Message) -> bytes:
         """Inverse of ``parse_directive``"""
 
-        if message.type == MessageType.HALT:
+        if isinstance(message, Halt):
             json_msg = {"message": "HALT", "uuid": message.uuid}
             return bytes(json.dumps(json_msg), "utf8")
-        if message.type == MessageType.UPDATE:
+
+        if isinstance(message, Update):
             if message.local_state is None:
                 raise ValueError
             inputs = [{"id": j.id} for j in message.local_state.held_inputs]
@@ -78,4 +117,27 @@ class MessageParser:
                 "state": {"inputs": inputs, "outputs": outputs},
             }
             return bytes(json.dumps(json_msg), "utf8")
+
+        if isinstance(message, SnapshotRequest):
+            json_msg = {"message": "SNAPSHOTREQUEST", "uuid": message.uuid}
+            return bytes(json.dumps(json_msg), "utf8")
+
+        if isinstance(message, SnapshotResponse):
+            patched = [
+                {
+                    "input_uuid": p.input_uuid,
+                    "input_jack_id": p.input_jack_id,
+                    "output_uuid": p.output_uuid,
+                    "output_jack_id": p.output_jack_id,
+                }
+                for p in message.patched
+            ]
+            json_msg = {
+                "message": "SNAPSHOTRESPONSE",
+                "uuid": message.uuid,
+                "data": message.data.decode(),
+                "patched": patched,
+            }
+            return bytes(json.dumps(json_msg), "utf8")
+
         raise NotImplementedError

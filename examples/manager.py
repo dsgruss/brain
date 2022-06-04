@@ -21,8 +21,8 @@ logging.basicConfig(
 class Manager:
     name = "Global State Control"
 
-    grid_size = (4, 9)
-    grid_pos = (0, 10)
+    grid_size = (4, 19)
+    grid_pos = (0, 0)
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
@@ -48,12 +48,13 @@ class Manager:
             ("oscilloscope", "examples/oscilloscope.py", "Oscilloscope"),
         ]
 
-        self.gridx = 0
+        self.gridx = 4
         self.gridy = 0
         self.color_idx = 0
         self.process_counter = Counter()
         self.events = multiprocessing.Queue()
         self.printer = honcho.printer.Printer(width=20)
+        self.snapshots = {}
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -74,6 +75,12 @@ class Manager:
         tk.Button(
             self.root, text="🔌    Close All", command=self.mod.halt_all, width=22
         ).place(x=10, y=50)
+        tk.Button(
+            self.root, text="Get Snapshots", command=self.get_snapshots, width=22
+        ).place(x=10, y=80)
+        tk.Button(
+            self.root, text="Set Snapshots", command=self.set_snapshots, width=22
+        ).place(x=10, y=110)
 
         for i, process in enumerate(self.processes):
             tk.Button(
@@ -81,7 +88,7 @@ class Manager:
                 text=process[2],
                 command=lambda x=process[1], y=process[0]: self.launch(x, y),
                 width=22,
-            ).place(x=10, y=100 + 30 * i)
+            ).place(x=10, y=200 + 30 * i)
 
         self.statusbar = tk.Label(
             self.root, text="Loading...", bd=1, relief=tk.SUNKEN, anchor=tk.W
@@ -157,6 +164,16 @@ class Manager:
     def patching_callback(self, state):
         self.statusbar.config(text=str(state))
 
+    def get_snapshots(self):
+        self.mod.get_all_snapshots()
+
+    def recieved_snapshot(self, uuid, data, patched):
+        self.snapshots[uuid] = (data, patched)
+
+    def set_snapshots(self):
+        for k, v in self.snapshots.items():
+            logging.info(str(k) + "\t" + str(v))
+
 
 class ManagerEventHandler(brain.EventHandler):
     def __init__(self, app: Manager) -> None:
@@ -164,6 +181,9 @@ class ManagerEventHandler(brain.EventHandler):
 
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
+
+    def recieved_snapshot(self, uuid, data: bytes, patched) -> None:
+        self.app.recieved_snapshot(uuid, data, patched)
 
 
 if __name__ == "__main__":
