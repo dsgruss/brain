@@ -52,6 +52,7 @@ class InputJack(Jack):
 
     def clear(self):
         if self.is_patched():
+            self.jack_listener.disconnect()
             self.connected_jack = None
 
     def disconnect(self, output_uuid, output_id):

@@ -108,6 +108,13 @@ class MessageParser:
                 response["uuid"], [self.parse_directive(d) for d in response["data"]]
             )
 
+        if response["message"] == "SETINPUTJACK":
+            return SetInputJack(
+                response["uuid"],
+                HeldOutputJack(**response["source"]),
+                PatchConnection(**response["connection"]),
+            )
+
         if response["message"] == "HALT":
             return Halt(response["uuid"])
         return None
@@ -161,6 +168,25 @@ class MessageParser:
                 "message": "SETPRESET",
                 "uuid": message.uuid,
                 "data": [self.create_directive(msg).decode() for msg in message.data],
+            }
+            return bytes(json.dumps(json_msg), "utf8")
+
+        if isinstance(message, SetInputJack):
+            json_msg = {
+                "message": "SETINPUTJACK",
+                "uuid": message.uuid,
+                "source": {
+                    "uuid": message.source.uuid,
+                    "id": message.source.id,
+                    "color": message.source.color,
+                    "port": message.source.port,
+                },
+                "connection": {
+                    "input_uuid": message.connection.input_uuid,
+                    "input_jack_id": message.connection.input_jack_id,
+                    "output_uuid": message.connection.output_uuid,
+                    "output_jack_id": message.connection.output_jack_id,
+                },
             }
             return bytes(json.dumps(json_msg), "utf8")
 

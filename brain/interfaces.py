@@ -94,7 +94,7 @@ class EventHandler:
         """Called when module recieves a snapshot of another. Setup by ``get_all_snapshots``."""
         pass
 
-    def set_snapshot(self, snapshot: bytes, patched: List[PatchConnection]) -> None:
+    def set_snapshot(self, snapshot: bytes) -> None:
         """Sets the state of the module to a previously taken snapshot."""
         pass
 

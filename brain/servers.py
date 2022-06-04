@@ -18,6 +18,11 @@ class InputJackListener:
         self.sock.bind((address, port))
         self.connected = True
 
+    def disconnect(self):
+        if self.connected:
+            self.sock.close()
+            self.connected = False
+
     def get_data(self) -> bytes:
         data = b""
         if self.connected:

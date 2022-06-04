@@ -1,3 +1,4 @@
+from collections import defaultdict
 import itertools
 import logging
 import netifaces
@@ -27,6 +28,7 @@ from .parsers import (
     Halt,
     Message,
     PatchConnection,
+    SetInputJack,
     SetPreset,
     SnapshotRequest,
     SnapshotResponse,
@@ -378,6 +380,8 @@ class Module:
                 self.send_data(jack, post_process[i, :, :])
 
     def event_process(self, message: Message):
+        """Primary event handler for messages on the patching port"""
+
         if isinstance(message, Halt):
             self.halt_callback()
 
@@ -418,6 +422,23 @@ class Module:
 
         if isinstance(message, SetPreset):
             logging.info("Got preset: " + str(message))
+            for d in message.data:
+                if d.uuid == self.uuid:
+                    return self.prepare_preset(d)
+            for jack in self.inputs.items():
+                jack.clear()
+            for jack in self.outputs.items():
+                jack.clear()
+
+        if isinstance(message, SetInputJack):
+            if message.connection.input_uuid == self.uuid:
+                self.inputs[message.connection.input_jack_id].connect(
+                    self.broadcast_addr["addr"],
+                    message.source.port,
+                    message.source.color,
+                    message.connection.output_uuid,
+                    message.connection.output_jack_id,
+                )
 
     def get_all_snapshots(self):
         """Send a snapshot request to all modules"""
@@ -428,3 +449,34 @@ class Module:
         if self.get_patch_state() != PatchState.IDLE:
             return
         self.patch_server.message_send(SetPreset(self.uuid, snapshots))
+
+    def prepare_preset(self, d: SnapshotResponse):
+        self.event_handler.set_snapshot(d.data)
+        input_patches = {}
+        output_patches = defaultdict(list)
+        for p in d.patched:
+            if p.input_uuid == self.uuid:
+                input_patches[p.input_jack_id] = p
+            if p.output_uuid == self.uuid:
+                output_patches[p.output_jack_id].append(p)
+
+        for id, jack in self.inputs.items():
+            if jack.is_patched():
+                if id not in input_patches or (
+                    not jack.is_connected(
+                        input_patches[id].output_uuid, input_patches[id].output_jack_id
+                    )
+                ):
+                    jack.clear()
+
+        for id, jack in self.outputs.items():
+            jack.clear()
+            for p in output_patches[id]:
+                jack.connect(p.input_uuid, p.input_jack_id)
+                self.patch_server.message_send(
+                    SetInputJack(
+                        self.uuid,
+                        HeldOutputJack(self.uuid, id, jack.color, jack.endpoint[1]),
+                        p,
+                    )
+                )
