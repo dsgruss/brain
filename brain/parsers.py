@@ -1,7 +1,7 @@
 import json
 
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Optional
 
 from brain.interfaces import (
     HeldInputJack,
@@ -34,6 +34,17 @@ class SnapshotResponse(Message):
 
 
 @dataclass
+class SetPreset(Message):
+    data: List[SnapshotResponse]
+
+
+@dataclass
+class SetInputJack(Message):
+    source: HeldOutputJack
+    connection: PatchConnection
+
+
+@dataclass
 class Halt(Message):
     pass
 
@@ -43,7 +54,7 @@ class MessageParser:
     udp packets.
     """
 
-    def parse_directive(self, data: bytes) -> Union[Message, None]:
+    def parse_directive(self, data: bytes) -> Optional[Message]:
         """Turns raw bytes into a ``Message``. Returns ``None`` if the message was unable to be
         parsed.
 
@@ -90,6 +101,11 @@ class MessageParser:
                     )
                     for p in response["patched"]
                 ],
+            )
+
+        if response["message"] == "SETPRESET":
+            return SetPreset(
+                response["uuid"], [self.parse_directive(d) for d in response["data"]]
             )
 
         if response["message"] == "HALT":
@@ -140,4 +156,12 @@ class MessageParser:
             }
             return bytes(json.dumps(json_msg), "utf8")
 
-        raise NotImplementedError
+        if isinstance(message, SetPreset):
+            json_msg = {
+                "message": "SETPRESET",
+                "uuid": message.uuid,
+                "data": [self.create_directive(msg).decode() for msg in message.data],
+            }
+            return bytes(json.dumps(json_msg), "utf8")
+
+        raise NotImplementedError(message)

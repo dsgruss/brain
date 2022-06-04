@@ -4,7 +4,7 @@ import netifaces
 import numpy as np
 import uuid
 
-from typing import Dict
+from typing import Dict, List
 
 from .constants import (
     BLOCK_SIZE,
@@ -27,6 +27,7 @@ from .parsers import (
     Halt,
     Message,
     PatchConnection,
+    SetPreset,
     SnapshotRequest,
     SnapshotResponse,
     Update,
@@ -413,10 +414,17 @@ class Module:
             )
 
         if isinstance(message, SnapshotResponse):
-            self.event_handler.recieved_snapshot(
-                message.uuid, message.data, message.patched
-            )
+            self.event_handler.recieved_snapshot(message)
+
+        if isinstance(message, SetPreset):
+            logging.info("Got preset: " + str(message))
 
     def get_all_snapshots(self):
         """Send a snapshot request to all modules"""
         self.patch_server.message_send(SnapshotRequest(self.uuid))
+
+    def set_all_snapshots(self, snapshots: List[SnapshotResponse]):
+        """Send a changed present message to all modules"""
+        if self.get_patch_state() != PatchState.IDLE:
+            return
+        self.patch_server.message_send(SetPreset(self.uuid, snapshots))

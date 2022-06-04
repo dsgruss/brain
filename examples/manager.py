@@ -181,13 +181,14 @@ class Manager:
     def get_snapshots(self):
         self.mod.get_all_snapshots()
 
-    def recieved_snapshot(self, uuid, data, patched):
-        if uuid != self.id:
-            self.snapshots[uuid] = (data, patched)
+    def recieved_snapshot(self, snapshot):
+        if snapshot.uuid != self.id:
+            self.snapshots[snapshot.uuid] = snapshot
 
     def set_snapshots(self):
-        for k, v in self.snapshots.items():
-            logging.info(str(k) + "\t" + str(v))
+        for v in self.snapshots.values():
+            logging.info("Snapshot item: " + str(v))
+        self.mod.set_all_snapshots(self.snapshots.values())
 
 
 class ManagerEventHandler(brain.EventHandler):
@@ -197,8 +198,8 @@ class ManagerEventHandler(brain.EventHandler):
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
-    def recieved_snapshot(self, uuid, data: bytes, patched) -> None:
-        self.app.recieved_snapshot(uuid, data, patched)
+    def recieved_snapshot(self, snapshot) -> None:
+        self.app.recieved_snapshot(snapshot)
 
 
 if __name__ == "__main__":
