@@ -90,8 +90,10 @@ class EventHandler:
         """
         return b""
 
-    def recieved_snapshot(self, snapshot) -> None:
-        """Called when module recieves a snapshot of another. Setup by ``get_all_snapshots``."""
+    def recieved_snapshot(self, id: ModuleUuid, snapshot: bytes) -> None:
+        """Called when module recieves a complete snapshot of another including patch information.
+        Setup by ``get_all_snapshots``.
+        """
         pass
 
     def set_snapshot(self, snapshot: bytes) -> None:

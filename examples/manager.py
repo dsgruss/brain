@@ -1,4 +1,5 @@
 import asyncio
+import time
 import honcho.process
 import honcho.printer
 import multiprocessing
@@ -39,15 +40,15 @@ class Manager:
             ("blue", str(34) + ";1", 240),
         ]
 
-        self.processes = [
-            ("midi_to_cv", "examples/midi_to_cv.py", "Midi to CV"),
-            ("asr_envelope", "examples/asr_envelope.py", "ASR Envelope"),
-            ("oscillator", "examples/oscillator.py", "Oscillator"),
-            ("mixer", "examples/mixer.py", "Mixer"),
-            ("filter", "examples/filter.py", "Filter"),
-            ("audio_interface", "examples/audio_interface.py", "Audio Interface"),
-            ("oscilloscope", "examples/oscilloscope.py", "Oscilloscope"),
-        ]
+        self.processes = {
+            "midi_to_cv": ("examples/midi_to_cv.py", "Midi to CV"),
+            "asr_envelope": ("examples/asr_envelope.py", "ASR Envelope"),
+            "oscillator": ("examples/oscillator.py", "Oscillator"),
+            "mixer": ("examples/mixer.py", "Mixer"),
+            "filter": ("examples/filter.py", "Filter"),
+            "audio_interface": ("examples/audio_interface.py", "Audio Interface"),
+            "oscilloscope": ("examples/oscilloscope.py", "Oscilloscope"),
+        }
 
         self.gridx = 4
         self.gridy = 0
@@ -55,7 +56,7 @@ class Manager:
         self.open_processes = defaultdict(dict)
         self.events = multiprocessing.Queue()
         self.printer = honcho.printer.Printer(width=20)
-        self.snapshots = {}
+        self.snapshots = init_patch
 
         self.ui_setup()
         loop.create_task(self.ui_task())
@@ -83,11 +84,11 @@ class Manager:
             self.root, text="Load Preset", command=self.set_snapshots, width=22
         ).place(x=10, y=110)
 
-        for i, process in enumerate(self.processes):
+        for i, process in enumerate(self.processes.items()):
             tk.Button(
                 self.root,
-                text=process[2],
-                command=lambda x=process[1], y=process[0]: self.launch(x, y),
+                text=process[1][1],
+                command=lambda x=process[1][0], y=process[0]: self.launch(x, y),
                 width=22,
             ).place(x=10, y=200 + 30 * i)
 
@@ -128,12 +129,13 @@ class Manager:
                 id_idx = int(msg.name.split(".")[1])
                 del self.open_processes[id][id_idx]
 
-    def launch(self, dest, id):
-        # Find the next open id the slow way
-        id_idx = 0
-        used_idxs = self.open_processes[id].keys()
-        while id_idx in used_idxs:
-            id_idx += 1
+    def launch(self, dest, id, id_idx=None):
+        if id_idx is None:
+            # Find the next open id the slow way
+            id_idx = 0
+            used_idxs = self.open_processes[id].keys()
+            while id_idx in used_idxs:
+                id_idx += 1
 
         target = honcho.process.Process(
             [
@@ -181,13 +183,21 @@ class Manager:
     def get_snapshots(self):
         self.mod.get_all_snapshots()
 
-    def recieved_snapshot(self, snapshot):
-        if snapshot.uuid != self.id:
-            self.snapshots[snapshot.uuid] = snapshot
+    def recieved_snapshot(self, uuid, snapshot):
+        if uuid != self.id:
+            self.snapshots[uuid] = snapshot
 
     def set_snapshots(self):
-        for v in self.snapshots.values():
-            logging.info("Snapshot item: " + str(v))
+        logging.info("Snapshot items: " + str(self.snapshots))
+        launched_process = False
+        for k, v in self.snapshots.items():
+            id = k.split(":")[-2]
+            id_idx = int(k.split(":")[-1])
+            if id_idx not in self.open_processes[id]:
+                self.launch(self.processes[id][0], id, id_idx)
+                launched_process = True
+        if launched_process:
+            time.sleep(1)
         self.mod.set_all_snapshots(self.snapshots.values())
 
 
@@ -198,9 +208,18 @@ class ManagerEventHandler(brain.EventHandler):
     def patch(self, state: brain.PatchState) -> None:
         self.app.patching_callback(state)
 
-    def recieved_snapshot(self, snapshot) -> None:
-        self.app.recieved_snapshot(snapshot)
+    def recieved_snapshot(self, uuid, snapshot) -> None:
+        self.app.recieved_snapshot(uuid, snapshot)
 
+
+init_patch = {
+    "root:virtual_examples:midi_to_cv:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:midi_to_cv:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "1", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:oscillator:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:asr_envelope:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "1"}]}',
+    "root:virtual_examples:asr_envelope:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:asr_envelope:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:asr_envelope:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "1"}, {"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "3", "output_uuid": "root:virtual_examples:asr_envelope:0", "output_jack_id": "1"}]}',
+    "root:virtual_examples:oscillator:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:oscillator:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:oscillator:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:oscillator:0", "output_jack_id": "3"}]}',
+    "root:virtual_examples:filter:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:filter:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:oscillator:0", "output_jack_id": "3"}, {"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "1", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:filter:0", "output_jack_id": "2"}]}',
+    "root:virtual_examples:mixer:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:mixer:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:filter:0", "output_jack_id": "2"}, {"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "3", "output_uuid": "root:virtual_examples:asr_envelope:0", "output_jack_id": "1"}, {"input_uuid": "root:virtual_examples:audio_interface:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:mixer:0", "output_jack_id": "6"}]}',
+    "root:virtual_examples:audio_interface:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:audio_interface:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:audio_interface:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:mixer:0", "output_jack_id": "6"}]}',
+}
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()

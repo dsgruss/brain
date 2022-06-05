@@ -27,6 +27,7 @@ from .jacks import Jack, InputJack, OutputJack
 from .parsers import (
     Halt,
     Message,
+    MessageParser,
     PatchConnection,
     SetInputJack,
     SetPreset,
@@ -418,7 +419,9 @@ class Module:
             )
 
         if isinstance(message, SnapshotResponse):
-            self.event_handler.recieved_snapshot(message)
+            self.event_handler.recieved_snapshot(
+                message.uuid, MessageParser().create_directive(message)
+            )
 
         if isinstance(message, SetPreset):
             logging.info("Got preset: " + str(message))
@@ -444,11 +447,14 @@ class Module:
         """Send a snapshot request to all modules"""
         self.patch_server.message_send(SnapshotRequest(self.uuid))
 
-    def set_all_snapshots(self, snapshots: List[SnapshotResponse]):
+    def set_all_snapshots(self, snapshots: List[bytes]):
         """Send a changed present message to all modules"""
         if self.get_patch_state() != PatchState.IDLE:
             return
-        self.patch_server.message_send(SetPreset(self.uuid, snapshots))
+        m = MessageParser()
+        self.patch_server.message_send(
+            SetPreset(self.uuid, [m.parse_directive(s) for s in snapshots])
+        )
 
     def prepare_preset(self, d: SnapshotResponse):
         self.event_handler.set_snapshot(d.data)

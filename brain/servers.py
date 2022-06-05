@@ -1,7 +1,7 @@
 import logging
 import random
 import socket
-from typing import Union
+from typing import Optional
 
 from brain.constants import PATCH_PORT
 from brain.parsers import Message, MessageParser
@@ -27,7 +27,7 @@ class InputJackListener:
         data = b""
         if self.connected:
             try:
-                data = self.sock.recv(2048)
+                data = self.sock.recv(4096)
             except BlockingIOError:
                 return b""
         return data
@@ -63,7 +63,7 @@ class PatchServer:
         data = b""
         if self.sock is not None:
             try:
-                data = self.sock.recv(2048)
+                data = self.sock.recv(4096)
             except BlockingIOError:
                 return b""
         return data
@@ -75,7 +75,7 @@ class PatchServer:
         payload = self.parser.create_directive(message)
         self.sock.sendto(payload, (self.broadcast_addr, PATCH_PORT))
 
-    def get_message(self) -> Union[Message, None]:
+    def get_message(self) -> Optional[Message]:
         message = self.parser.parse_directive(self.get_data())
         if message is not None:
             logging.info("<= " + str(message))
