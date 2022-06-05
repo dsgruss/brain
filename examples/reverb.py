@@ -62,7 +62,12 @@ class Reverb(brain.EventHandler):
     def block_process(self, input: np.ndarray) -> np.ndarray:
         output = np.zeros((1, BLOCK_SIZE, CHANNELS))
         for i in range(CHANNELS):
-            output[0, :, i] = self.reverbs[i](input[0, :, i], sample_rate=SAMPLE_RATE, buffer_size=BLOCK_SIZE, reset=False)
+            output[0, :, i] = self.reverbs[i](
+                input[0, :, i],
+                sample_rate=SAMPLE_RATE,
+                buffer_size=BLOCK_SIZE,
+                reset=False,
+            )
         return output.astype(SAMPLE_TYPE)
 
     async def module_task(self):
@@ -93,7 +98,6 @@ class Reverb(brain.EventHandler):
     def patch(self, state):
         for jack in [self.in_tkjack, self.out_tkjack]:
             jack.patching_callback(state)
-
 
 
 if __name__ == "__main__":

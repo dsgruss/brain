@@ -48,7 +48,7 @@ class Manager:
             "filter": ("examples/filter.py", "Filter"),
             "audio_interface": ("examples/audio_interface.py", "Audio Interface"),
             "oscilloscope": ("examples/oscilloscope.py", "Oscilloscope"),
-            "reverb": ("examples/reverb.py", "Reverb")
+            "reverb": ("examples/reverb.py", "Reverb"),
         }
 
         self.gridx = 4
