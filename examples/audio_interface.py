@@ -31,7 +31,16 @@ class AudioInterface:
         else:
             self.default_device = sd.default.device["output"]
 
-        logging.info("Using device " + sd.query_devices(self.default_device)["name"])
+        info = sd.query_devices(self.default_device)
+        self.default_device_key = f"{self.default_device} {info['name']}, {sd.query_hostapis(info['hostapi'])['name']}"
+        logging.info("Using device " + self.default_device_key)
+        self.selected_device = self.default_device
+
+        self.output_sound_devices = {
+            f"{i} {d['name']}, {sd.query_hostapis(d['hostapi'])['name']}": i
+            for i, d in enumerate(sd.query_devices())
+            if d["max_output_channels"] != 0
+        }
 
         self.mod = brain.Module(
             self.name,
@@ -47,19 +56,22 @@ class AudioInterface:
         loop.create_task(self.module_task())
         loop.create_task(self.audio_task())
 
-    async def audio_task(self):
-        s = sd.OutputStream(
-            device=self.default_device,
-            samplerate=brain.SAMPLE_RATE,
-            channels=1,
-            dtype=brain.SAMPLE_TYPE,
-            blocksize=brain.BLOCK_SIZE,
-            callback=self.audio_callback,
-        )
+    async def audio_task(self, interval=1):
+        while True:
+            s = sd.OutputStream(
+                device=self.selected_device,
+                samplerate=brain.SAMPLE_RATE,
+                channels=1,
+                dtype=brain.SAMPLE_TYPE,
+                blocksize=brain.BLOCK_SIZE,
+                callback=self.audio_callback,
+            )
+            output_device = self.selected_device
 
-        with s:
-            while True:
-                await asyncio.sleep(5)
+            with s:
+                while output_device == self.selected_device:
+                    await asyncio.sleep(interval)
+                logging.info("Output device changed to " + str(self.selected_device))
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -74,6 +86,13 @@ class AudioInterface:
         self.in_tkjack = tkJack(self.root, self.mod, self.in_jack, "Audio In")
         self.in_tkjack.place(x=10, y=50)
 
+        self.opt_selected_device = tk.StringVar(value=self.default_device_key)
+        tk.OptionMenu(
+            self.root, self.opt_selected_device, *(self.output_sound_devices.keys())
+        ).place(x=10, y=100)
+
+        sd.query_devices()
+
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
     def data_callback(self, data):
@@ -87,6 +106,9 @@ class AudioInterface:
         while True:
             try:
                 self.in_tkjack.update_display()
+                self.selected_device = self.output_sound_devices[
+                    self.opt_selected_device.get()
+                ]
 
                 self.root.update()
                 await asyncio.sleep(interval)
