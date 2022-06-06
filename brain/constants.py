@@ -21,7 +21,7 @@ BLOCK_SIZE: Final = 48
 CHANNELS: Final = 8
 
 #: Maximum number of states to buffer
-BUFFER_SIZE: Final = 100
+BUFFER_SIZE: Final = 1
 
 #: Sample data type
 SAMPLE_TYPE: Final = np.int16

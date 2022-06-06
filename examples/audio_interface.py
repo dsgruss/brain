@@ -49,7 +49,7 @@ class AudioInterface(brain.EventHandler):
             id="root:virtual_examples:audio_interface:" + str(args.id),
         )
         self.in_jack = self.mod.add_input("Audio In")
-        self.audio_buffer = Queue(brain.BUFFER_SIZE)
+        self.audio_buffer = Queue(brain.BUFFER_SIZE * 100)
 
         self.ui_setup()
         loop.create_task(self.ui_task())
