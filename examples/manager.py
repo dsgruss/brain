@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 
 
-class Manager:
+class Manager(brain.EventHandler):
     name = "Global State Control"
 
     grid_size = (4, 19)
@@ -29,7 +29,7 @@ class Manager:
         self.loop = loop
         self.id = "root:virtual_examples:manager"
 
-        self.mod = brain.Module(self.name, ManagerEventHandler(self), id=self.id)
+        self.mod = brain.Module(self.name, self, id=self.id)
 
         self.colors = [
             ("cyan", str(36) + ";1", 180),
@@ -178,7 +178,10 @@ class Manager:
     async def quit(self):
         self.loop.stop()
 
-    def patching_callback(self, state):
+    def process(self, input):
+        return super().process(input)
+
+    def patch(self, state):
         self.statusbar.config(text=str(state))
 
     def get_snapshots(self):
@@ -200,17 +203,6 @@ class Manager:
         if launched_process:
             time.sleep(1)
         self.mod.set_all_snapshots(self.snapshots.values())
-
-
-class ManagerEventHandler(brain.EventHandler):
-    def __init__(self, app: Manager) -> None:
-        self.app = app
-
-    def patch(self, state: brain.PatchState) -> None:
-        self.app.patching_callback(state)
-
-    def recieved_snapshot(self, uuid, snapshot) -> None:
-        self.app.recieved_snapshot(uuid, snapshot)
 
 
 init_patch = {
