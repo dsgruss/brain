@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import numpy as np
 import tkinter as tk
-import time
 
 import brain
 from common import tkJack, tkKnob
@@ -12,7 +11,7 @@ import logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
-class ASREnvelope:
+class ASREnvelope(brain.EventHandler):
 
     name = "ASR Envelope Generator"
 
@@ -25,7 +24,7 @@ class ASREnvelope:
 
         self.mod = brain.Module(
             self.name,
-            ASREnvelopeEventHandler(self),
+            self,
             id="root:virtual_examples:asr_envelope:" + str(args.id),
         )
 
@@ -35,10 +34,8 @@ class ASREnvelope:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.gates = [0] * brain.CHANNELS
         self.level = [0] * brain.CHANNELS
 
-        loop.create_task(self.output_task())
         loop.create_task(self.module_task())
 
     def ui_setup(self):
@@ -83,11 +80,6 @@ class ASREnvelope:
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def data_callback(self):
-        data = self.gate_jack.get_data()
-        for i in range(brain.CHANNELS):
-            self.gates[i] = data[0, i]
-
     async def module_task(self):
         while True:
             self.mod.update()
@@ -102,10 +94,10 @@ class ASREnvelope:
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
-                self.shutdown()
+                self.halt()
                 break
 
-    def shutdown(self):
+    def halt(self):
         for task in asyncio.all_tasks():
             task.cancel()
         asyncio.ensure_future(self.quit())
@@ -113,51 +105,31 @@ class ASREnvelope:
     async def quit(self):
         self.loop.stop()
 
-    def patching_callback(self, state):
+    def patch(self, state):
         for jack in [self.gate_tkjack, self.asr_tkjack]:
             jack.patching_callback(state)
 
-    async def output_task(self):
-        t = time.perf_counter()
-        output = np.zeros((brain.BLOCK_SIZE, brain.CHANNELS))
-        while True:
-            dt = time.perf_counter() - t
-            while dt > (1 / brain.PACKET_RATE):
-                atime = self.attack_val.get()
-                rtime = self.release_val.get()
-                astep = 16000 / brain.PACKET_RATE / atime
-                rstep = 16000 / brain.PACKET_RATE / rtime
-                for i, v in enumerate(self.gates):
-                    if self.level[i] < v:
-                        output[:, i] = np.linspace(
-                            self.level[i], self.level[i] + astep, brain.BLOCK_SIZE
-                        ).clip(max=v)
-                        self.level[i] = min(v, self.level[i] + astep)
-                    else:
-                        output[:, i] = np.linspace(
-                            self.level[i], self.level[i] - rstep, brain.BLOCK_SIZE
-                        ).clip(min=v)
-                        self.level[i] = max(v, self.level[i] - rstep)
+    def process(self, input):
 
-                self.mod.send_data(self.asr_jack, output.astype(brain.SAMPLE_TYPE))
-                t += 1 / brain.PACKET_RATE
-                dt = time.perf_counter() - t
+        output = np.zeros((1, brain.BLOCK_SIZE, brain.CHANNELS))
 
-            await asyncio.sleep(1 / brain.PACKET_RATE)
+        atime = self.attack_val.get()
+        rtime = self.release_val.get()
+        astep = 16000 / brain.PACKET_RATE / atime
+        rstep = 16000 / brain.PACKET_RATE / rtime
+        for i, v in enumerate(input[0, 0, :]):
+            if self.level[i] < v:
+                output[0, :, i] = np.linspace(
+                    self.level[i], self.level[i] + astep, brain.BLOCK_SIZE
+                ).clip(max=v)
+                self.level[i] = min(v, self.level[i] + astep)
+            else:
+                output[0, :, i] = np.linspace(
+                    self.level[i], self.level[i] - rstep, brain.BLOCK_SIZE
+                ).clip(min=v)
+                self.level[i] = max(v, self.level[i] - rstep)
 
-
-class ASREnvelopeEventHandler(brain.EventHandler):
-    def __init__(self, app: ASREnvelope) -> None:
-        self.app = app
-
-    def patch(self, state: brain.PatchState) -> None:
-        self.app.patching_callback(state)
-
-    def process(self) -> None:
-        self.app.data_callback()
-
-    def halt(self) -> None:
-        self.app.shutdown()
+        return output.astype(brain.SAMPLE_TYPE)
 
 
 if __name__ == "__main__":

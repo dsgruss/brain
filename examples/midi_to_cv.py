@@ -2,12 +2,12 @@ import argparse
 import asyncio
 import mido
 import numpy as np
-import time
 import tkinter as tk
 
 from dataclasses import dataclass
 
 import brain
+from brain.constants import BLOCK_SIZE, CHANNELS
 from common import tkJack
 
 import logging
@@ -22,7 +22,7 @@ class Voice:
     timestamp: int
 
 
-class MidiToCV:
+class MidiToCV(brain.EventHandler):
     """Module to convert a midi stream to control voltages"""
 
     timestamp = 0
@@ -41,7 +41,7 @@ class MidiToCV:
 
         self.mod = brain.Module(
             self.name,
-            MidiToCVEventHandler(self),
+            self,
             id="root:virtual_examples:midi_to_cv:" + str(args.id),
         )
 
@@ -57,8 +57,6 @@ class MidiToCV:
 
         self.ui_setup()
         self.loop.create_task(self.ui_task())
-
-        self.loop.create_task(self.output_task())
         self.loop.create_task(self.module_task())
 
     def ui_setup(self):
@@ -91,7 +89,7 @@ class MidiToCV:
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
-                self.shutdown()
+                self.halt()
                 break
 
     async def module_task(self):
@@ -99,7 +97,7 @@ class MidiToCV:
             self.mod.update()
             await asyncio.sleep(1 / brain.PACKET_RATE)
 
-    def shutdown(self):
+    def halt(self):
         for task in asyncio.all_tasks():
             task.cancel()
         asyncio.ensure_future(self.quit())
@@ -107,7 +105,7 @@ class MidiToCV:
     async def quit(self):
         self.loop.stop()
 
-    def patching_callback(self, state):
+    def patch(self, state):
         for jack in [self.note_tkjack, self.gate_tkjack, self.mdwh_tkjack]:
             jack.patching_callback(state)
 
@@ -144,40 +142,18 @@ class MidiToCV:
                 logging.info("\n\t".join([str(v) for v in self.voices]))
             await asyncio.sleep(interval)
 
-    async def output_task(self):
+    def process(self, input):
         """Send the data as CV over over all requested ports and addresses at the configured sample
         rate"""
 
-        t = time.perf_counter()
-        voct_data = np.zeros((1, 8), dtype=brain.SAMPLE_TYPE)
-        gate_data = np.zeros((1, 8), dtype=brain.SAMPLE_TYPE)
-        mdwh_data = np.zeros((1, 8), dtype=brain.SAMPLE_TYPE)
-        while True:
-            dt = time.perf_counter() - t
-            while dt > (1 / brain.PACKET_RATE):
-                for i, v in enumerate(self.voices):
-                    voct_data[0, i] = v.note * 256
-                    gate_data[0, i] = 16000 if v.on else 0
-                    mdwh_data[0, i] = self.mod_wheel * 256
+        output = np.zeros((6, BLOCK_SIZE, CHANNELS), dtype=brain.SAMPLE_TYPE)
 
-                self.mod.send_data(self.note_jack, voct_data)
-                self.mod.send_data(self.gate_jack, gate_data)
-                self.mod.send_data(self.mdwh_jack, mdwh_data)
-                t += 1 / brain.PACKET_RATE
-                dt = time.perf_counter() - t
+        for i, v in enumerate(self.voices):
+            output[0, :, i].fill(v.note * 256)
+            output[1, :, i].fill(16000 if v.on else 0)
+            output[5, :, i].fill(self.mod_wheel * 256)
 
-            await asyncio.sleep(1 / brain.PACKET_RATE)
-
-
-class MidiToCVEventHandler(brain.EventHandler):
-    def __init__(self, app: MidiToCV) -> None:
-        self.app = app
-
-    def patch(self, state: brain.PatchState) -> None:
-        self.app.patching_callback(state)
-
-    def halt(self) -> None:
-        self.app.shutdown()
+        return output
 
 
 if __name__ == "__main__":

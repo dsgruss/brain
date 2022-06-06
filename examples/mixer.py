@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
-class Mixer:
+class Mixer(brain.EventHandler):
     name = "Mixer"
     inputs = 3
     grid_size = (4, 9)
@@ -24,8 +24,7 @@ class Mixer:
 
         self.mod = brain.Module(
             self.name,
-            MixerEventHandler(self),
-            use_block_callback=True,
+            self,
             id="root:virtual_examples:mixer:" + str(args.id),
         )
 
@@ -35,7 +34,6 @@ class Mixer:
 
         self.ui_setup()
         loop.create_task(self.ui_task())
-
         loop.create_task(self.module_task())
 
     def ui_setup(self):
@@ -77,10 +75,7 @@ class Mixer:
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def data_callback(self, input):
-        # print(input)
-        # print(input.shape)
-        # exit(0)
+    def process(self, input):
         output = np.zeros((1, brain.BLOCK_SIZE, brain.CHANNELS))
         for i in range(self.inputs):
             if self.mod.is_patched(self.cv_jack[i]):
@@ -106,10 +101,10 @@ class Mixer:
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
-                self.shutdown()
+                self.halt()
                 break
 
-    def shutdown(self):
+    def halt(self):
         for task in asyncio.all_tasks():
             task.cancel()
         asyncio.ensure_future(self.quit())
@@ -117,24 +112,10 @@ class Mixer:
     async def quit(self):
         self.loop.stop()
 
-    def patching_callback(self, state):
+    def patch(self, state):
         for jack in chain(self.in_tkjack, self.cv_tkjack):
             jack.patching_callback(state)
         self.out_tkjack.patching_callback(state)
-
-
-class MixerEventHandler(brain.EventHandler):
-    def __init__(self, app: Mixer) -> None:
-        self.app = app
-
-    def patch(self, state: brain.PatchState) -> None:
-        self.app.patching_callback(state)
-
-    def block_process(self, input: np.ndarray) -> np.ndarray:
-        return self.app.data_callback(input)
-
-    def halt(self) -> None:
-        self.app.shutdown()
 
 
 if __name__ == "__main__":

@@ -28,7 +28,6 @@ class Reverb(brain.EventHandler):
         self.mod = brain.Module(
             self.name,
             self,
-            use_block_callback=True,
             id="root:virtual_examples:reverb:" + str(args.id),
         )
 
@@ -59,7 +58,7 @@ class Reverb(brain.EventHandler):
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def block_process(self, input: np.ndarray) -> np.ndarray:
+    def process(self, input: np.ndarray) -> np.ndarray:
         output = np.zeros((1, BLOCK_SIZE, CHANNELS))
         for i in range(CHANNELS):
             output[0, :, i] = self.reverbs[i](

@@ -7,6 +7,7 @@ import tkinter as tk
 from queue import Queue
 
 import brain
+from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
 from common import tkJack
 
 import logging
@@ -14,7 +15,7 @@ import logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
-class AudioInterface:
+class AudioInterface(brain.EventHandler):
     name = "Audio Interface"
     grid_size = (4, 9)
 
@@ -44,8 +45,7 @@ class AudioInterface:
 
         self.mod = brain.Module(
             self.name,
-            AudioInterfaceEventHandler(self),
-            use_block_callback=True,
+            self,
             id="root:virtual_examples:audio_interface:" + str(args.id),
         )
         self.in_jack = self.mod.add_input("Audio In")
@@ -95,12 +95,12 @@ class AudioInterface:
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
-    def data_callback(self, data):
+    def process(self, data):
         if not self.audio_buffer.full():
             self.audio_buffer.put(data[0].copy())
-        assert data[0].shape == (48, 8)
-        assert data.dtype == np.int16
-        return np.zeros(1)
+        assert data[0].shape == (BLOCK_SIZE, CHANNELS)
+        assert data.dtype == SAMPLE_TYPE
+        return np.zeros((0, BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
 
     async def ui_task(self, interval=(1 / 60)):
         while True:
@@ -114,7 +114,7 @@ class AudioInterface:
                 await asyncio.sleep(interval)
             except tk.TclError as t:
                 logging.info(t)
-                self.shutdown()
+                self.halt()
                 break
 
     async def module_task(self):
@@ -122,7 +122,7 @@ class AudioInterface:
             self.mod.update()
             await asyncio.sleep(1 / brain.PACKET_RATE)
 
-    def shutdown(self):
+    def halt(self):
         for task in asyncio.all_tasks():
             task.cancel()
         asyncio.ensure_future(self.quit())
@@ -131,7 +131,7 @@ class AudioInterface:
         logging.info("Quit invoked")
         self.loop.stop()
 
-    def patching_callback(self, state):
+    def patch(self, state):
         self.in_tkjack.patching_callback(state)
 
     def audio_callback(
@@ -150,20 +150,6 @@ class AudioInterface:
                 outdata[:, 0] += data[:, i]
         else:
             outdata.fill(0)
-
-
-class AudioInterfaceEventHandler(brain.EventHandler):
-    def __init__(self, app: AudioInterface) -> None:
-        self.app = app
-
-    def patch(self, state: brain.PatchState) -> None:
-        self.app.patching_callback(state)
-
-    def block_process(self, input: np.ndarray) -> np.ndarray:
-        return self.app.data_callback(input)
-
-    def halt(self) -> None:
-        self.app.shutdown()
 
 
 if __name__ == "__main__":

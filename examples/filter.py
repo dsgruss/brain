@@ -14,7 +14,7 @@ import logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
 
-class Filter:
+class Filter(brain.EventHandler):
     name = "Filter"
     grid_size = (4, 9)
 
@@ -25,8 +25,7 @@ class Filter:
 
         self.mod = brain.Module(
             self.name,
-            FilterEventHandler(self),
-            use_block_callback=True,
+            self,
             id="root:virtual_examples:filter:" + str(args.id),
         )
         self.in_jack = self.mod.add_input("Audio In")
@@ -81,7 +80,7 @@ class Filter:
         self.out_tkjack = tkJack(self.root, self.mod, self.out_jack, "Audio Out")
         self.out_tkjack.place(x=10, y=250)
 
-    def data_callback(self, input):
+    def process(self, input):
         filter_freq = self.cutoff_val.get()
         resonance = 10 * self.resonance_val.get() ** 2
         result = np.zeros((1, BLOCK_SIZE, CHANNELS))
@@ -104,7 +103,7 @@ class Filter:
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
-                self.shutdown()
+                self.halt()
                 break
 
     async def module_task(self):
@@ -112,7 +111,7 @@ class Filter:
             self.mod.update()
             await asyncio.sleep(1 / brain.PACKET_RATE)
 
-    def shutdown(self):
+    def halt(self):
         for task in asyncio.all_tasks():
             task.cancel()
         asyncio.ensure_future(self.quit())
@@ -120,23 +119,9 @@ class Filter:
     async def quit(self):
         self.loop.stop()
 
-    def patching_callback(self, state):
+    def patch(self, state):
         for jack in [self.in_tkjack, self.key_tkjack, self.out_tkjack]:
             jack.patching_callback(state)
-
-
-class FilterEventHandler(brain.EventHandler):
-    def __init__(self, app: Filter) -> None:
-        self.app = app
-
-    def patch(self, state: brain.PatchState) -> None:
-        self.app.patching_callback(state)
-
-    def block_process(self, input: np.ndarray) -> np.ndarray:
-        return self.app.data_callback(input)
-
-    def halt(self) -> None:
-        self.app.shutdown()
 
 
 if __name__ == "__main__":

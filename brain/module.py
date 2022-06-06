@@ -1,16 +1,17 @@
-from collections import defaultdict
 import itertools
 import logging
 import netifaces
 import numpy as np
+import time
 import uuid
 
 from typing import Dict, List
+from collections import defaultdict
 
 from .constants import (
     BLOCK_SIZE,
-    BUFFER_SIZE,
     CHANNELS,
+    PACKET_RATE,
     PREFERRED_BROADCAST,
     SAMPLE_TYPE,
 )
@@ -51,9 +52,6 @@ class Module:
         application should either create its own class that inherits from ``EventHandler`` or create
         a new instance and modify the class methods.
 
-    :param use_block_callback: If ``True``, then incoming data is merged and interpolated into a
-        single matrix for block processing.
-
     :param id: Unique identifier of the module. This should be of the form
         ``"group:product:instance_number"``, but anything that is globally unique works as well. In
         the physical world, this is unique for each module and is used to identify a specific one in
@@ -64,18 +62,17 @@ class Module:
         self,
         name: str,
         event_handler: EventHandler = None,
-        use_block_callback: bool = False,
         id: ModuleUuid = None,
     ):
         self.name = name
         self.event_handler = event_handler or EventHandler()
-        self.use_block_callback = use_block_callback
         self.uuid: ModuleUuid = id or str(uuid.uuid4())
         self.global_state = GlobalState(PatchState.IDLE, {}, {})
 
         self.inputs: Dict[str, InputJack] = {}
         self.outputs: Dict[str, OutputJack] = {}
         self.broadcast_addr = None
+        self.tick_time = None
 
         addresses = []
         for interface in netifaces.interfaces():
@@ -102,11 +99,17 @@ class Module:
         perform callbacks if requested. This should be run periodically in an event loop or a
         thread.
         """
+        if self.tick_time is None:
+            self.tick_time = time.perf_counter()
         while (message := self.patch_server.get_message()) is not None:
             self.event_process(message)
-        for jack in self.inputs.values():
-            while jack.update():
-                self.check_process()
+        dt = time.perf_counter() - self.tick_time
+        while dt > (1 / PACKET_RATE):
+            for jack in self.inputs.values():
+                jack.update()
+            self.block_create()
+            self.tick_time += 1 / PACKET_RATE
+            dt = time.perf_counter() - self.tick_time
 
     def add_input(self, name: str) -> InputJack:
         """Adds a new input jack to the module
@@ -169,27 +172,6 @@ class Module:
         held input or output jack.
         """
         return jack.patch_member
-
-    def get_data(self, jack: InputJack) -> np.ndarray:
-        """Pull pending data from the jack. In the event that data is not available, this will
-        return a copy of the last seen packet. Used in response to a ``process`` callback.
-
-        :param jack: Input jack to receive data from
-
-        :return: An array of shape (X, ``brain.CHANNELS``) of data type ``brain.SAMPLE_TYPE``,
-            where X is the number of samples sent in a packet window"""
-        return jack.get_data()
-
-    def send_data(self, jack: OutputJack, data: np.ndarray) -> None:
-        """Send data through an output jack. Caller is responsible for maintaining packet timing.
-        Currently, this sends data out to the network at all times.
-
-        :param jack: Output jack through which to send
-
-        :param data: An array of shape (X, ``brain.CHANNELS``) of data type ``brain.SAMPLE_TYPE``,
-            where X is the number of samples sent in a packet window
-        """
-        jack.send(data)
 
     def set_patch_enabled(self, jack: Jack, state: bool) -> None:
         """Indicate the jack is available for patching (for instance, the patch button is held down)
@@ -328,48 +310,15 @@ class Module:
         else:
             output_jack.connect(input_uuid, input_id)
 
-    def check_process(self) -> None:
-        """Determine if data is ready for a synchronized processing step"""
-
-        data_available = True
-        for jack in self.inputs.values():
-            if not jack.is_patched():
-                continue
-            if len(jack.data_queue) >= BUFFER_SIZE:
-                if self.use_block_callback:
-                    self.block_create()
-                else:
-                    self.event_handler.process()
-                return
-            if len(jack.data_queue) == 0:
-                data_available = False
-        if data_available:
-            if self.use_block_callback:
-                self.block_create()
-            else:
-                self.event_handler.process()
-
     def block_create(self) -> None:
         """Gathers all input data into a single matrix for block processing"""
 
         num_inputs = len(self.inputs)
         num_outputs = len(self.outputs)
-        data = [jack.get_data() for jack in self.inputs.values()]
-        for i in range(num_inputs):
-            if data[i].shape[0] != BLOCK_SIZE:
-
-                # For now, data that arrives at a lower sample rate is simply repeated, but this
-                # will need to be changed to either interpolate incoming data, or require that all
-                # data be sent at audio rates.
-
-                expand = np.ones((BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
-                for j in range(CHANNELS):
-                    expand[:, j] = expand[:, j] * data[i][0, j]
-                data[i] = expand
-        result = np.array(data, dtype=SAMPLE_TYPE)
-        assert result.shape == (num_inputs, BLOCK_SIZE, CHANNELS)
-        assert result.dtype == SAMPLE_TYPE
-        post_process = self.event_handler.block_process(result.copy())
+        result = np.zeros((num_inputs, BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
+        for i, jack in enumerate(self.inputs.values()):
+            result[i, :, :] = jack.get_data()
+        post_process = self.event_handler.process(result)
         if num_outputs > 0:
             assert post_process.shape == (
                 num_outputs,
@@ -378,7 +327,7 @@ class Module:
             )
             assert post_process.dtype == SAMPLE_TYPE
             for i, jack in enumerate(self.outputs.values()):
-                self.send_data(jack, post_process[i, :, :])
+                jack.send(post_process[i, :, :])
 
     def event_process(self, message: Message):
         """Primary event handler for messages on the patching port"""

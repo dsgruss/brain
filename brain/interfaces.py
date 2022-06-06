@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import auto, Enum
 from typing import Dict, List, NewType
 
+from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
+
 
 class PatchState(Enum):
     """Enum used to track a global state over all connected modules"""
@@ -64,25 +66,16 @@ class EventHandler:
         """
         pass
 
-    def process(self) -> None:
-        """Input jack data is ready to be processed. Event processing should use ``get_data`` on all
-        input jacks to ensure the most synchronized state.
-        """
-        pass
-
-    def block_process(self, input: np.ndarray) -> np.ndarray:
+    def process(self, input: np.ndarray) -> np.ndarray:
         """Process all incoming data as a single block
 
-        :param input: An array of shape (Y, X, ``CHANNELS``) of data type ``SAMPLE_TYPE``, where X
-            is the number of samples sent in a packet window and Y is the number of added input
-            jacks in the order created. Data that is sent with a lower sample rate is expanded to
-            match the highest sample rate packet.
+        :param input: An array of shape (X, ``BLOCK_SIZE``, ``CHANNELS``) of data type
+            ``SAMPLE_TYPE``, where X is the number of added input jacks in the order created.
 
-        :return: An array of shape (Y, X, ``CHANNELS``) of data type ``SAMPLE_TYPE``, where X is the
-            number of samples sent in a packet window and Y is the number of added output jacks in
-            the order created.
+        :return: An array of shape (X, ``BLOCK_SIZE``, ``CHANNELS``) of data type ``SAMPLE_TYPE``,
+            where X is the number of added output jacks in the order created.
         """
-        return np.zeros(1)
+        return np.zeros((0, BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
 
     def get_snapshot(self) -> bytes:
         """Return the current state of the module without patches for preset saving. The structure

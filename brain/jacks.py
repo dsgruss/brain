@@ -84,10 +84,10 @@ class InputJack(Jack):
 
     def get_data(self) -> np.ndarray:
         """Pull pending data from the jack. In the event that data is not available, this will
-        return a copy of the last seen packet. Used in response to a ``process`` callback.
+        return a copy of the last seen packet.
 
-        :return: An array of shape (X, ``CHANNELS``) of data type ``SAMPLE_TYPE``,
-            where X is the number of samples sent in a packet window"""
+        :return: An array of shape (``BLOCK_SIZE``, ``CHANNELS``) of data type ``SAMPLE_TYPE``
+        """
         if len(self.data_queue) > 0:
             return self.data_queue.pop()
         else:
