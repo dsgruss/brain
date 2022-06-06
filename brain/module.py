@@ -21,7 +21,6 @@ from .interfaces import (
     HeldInputJack,
     HeldOutputJack,
     LocalState,
-    ModuleUuid,
     PatchState,
 )
 from .jacks import Jack, InputJack, OutputJack
@@ -62,11 +61,11 @@ class Module:
         self,
         name: str,
         event_handler: EventHandler = None,
-        id: ModuleUuid = None,
+        id: str = None,
     ):
         self.name = name
         self.event_handler = event_handler or EventHandler()
-        self.uuid: ModuleUuid = id or str(uuid.uuid4())
+        self.uuid: str = id or str(uuid.uuid4())
         self.global_state = GlobalState(PatchState.IDLE, {}, {})
 
         self.inputs: Dict[str, InputJack] = {}
@@ -316,8 +315,8 @@ class Module:
         num_inputs = len(self.inputs)
         num_outputs = len(self.outputs)
         result = np.zeros((num_inputs, BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
-        for i, jack in enumerate(self.inputs.values()):
-            result[i, :, :] = jack.get_data()
+        for i, in_jack in enumerate(self.inputs.values()):
+            result[i, :, :] = in_jack.get_data()
         post_process = self.event_handler.process(result)
         if num_outputs > 0:
             assert post_process.shape == (
@@ -326,8 +325,8 @@ class Module:
                 CHANNELS,
             )
             assert post_process.dtype == SAMPLE_TYPE
-            for i, jack in enumerate(self.outputs.values()):
-                jack.send(post_process[i, :, :])
+            for i, out_jack in enumerate(self.outputs.values()):
+                out_jack.send(post_process[i, :, :])
 
     def event_process(self, message: Message):
         """Primary event handler for messages on the patching port"""
@@ -348,18 +347,18 @@ class Module:
 
         if isinstance(message, SnapshotRequest):
             patches = []
-            for id, jack in self.inputs.items():
-                if jack.is_patched():
+            for id, in_jack in self.inputs.items():
+                if in_jack.is_patched():
                     patches.append(
                         PatchConnection(
                             self.uuid,
                             id,
-                            jack.connected_jack[0],
-                            jack.connected_jack[1],
+                            in_jack.connected_jack[0],
+                            in_jack.connected_jack[1],
                         )
                     )
-            for id, jack in self.outputs.items():
-                for input_uuid, input_jack_id in jack.connected_jacks:
+            for id, out_jack in self.outputs.items():
+                for input_uuid, input_jack_id in out_jack.connected_jacks:
                     patches.append(
                         PatchConnection(input_uuid, input_jack_id, self.uuid, id)
                     )
@@ -377,10 +376,10 @@ class Module:
             for d in message.data:
                 if d.uuid == self.uuid:
                     return self.prepare_preset(d)
-            for jack in self.inputs.items():
-                jack.clear()
-            for jack in self.outputs.items():
-                jack.clear()
+            for in_jack in self.inputs.values():
+                in_jack.clear()
+            for out_jack in self.outputs.values():
+                out_jack.clear()
 
         if isinstance(message, SetInputJack):
             if message.connection.input_uuid == self.uuid:
@@ -415,23 +414,25 @@ class Module:
             if p.output_uuid == self.uuid:
                 output_patches[p.output_jack_id].append(p)
 
-        for id, jack in self.inputs.items():
-            if jack.is_patched():
+        for id, in_jack in self.inputs.items():
+            if in_jack.is_patched():
                 if id not in input_patches or (
-                    not jack.is_connected(
+                    not in_jack.is_connected(
                         input_patches[id].output_uuid, input_patches[id].output_jack_id
                     )
                 ):
-                    jack.clear()
+                    in_jack.clear()
 
-        for id, jack in self.outputs.items():
-            jack.clear()
+        for id, out_jack in self.outputs.items():
+            out_jack.clear()
             for p in output_patches[id]:
-                jack.connect(p.input_uuid, p.input_jack_id)
+                out_jack.connect(p.input_uuid, p.input_jack_id)
                 self.patch_server.message_send(
                     SetInputJack(
                         self.uuid,
-                        HeldOutputJack(self.uuid, id, jack.color, jack.endpoint[1]),
+                        HeldOutputJack(
+                            self.uuid, id, out_jack.color, out_jack.endpoint[1]
+                        ),
                         p,
                     )
                 )

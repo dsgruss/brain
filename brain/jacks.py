@@ -38,7 +38,7 @@ class InputJack(Jack):
     def __init__(self, name: str):
         self.data_queue = deque()
         self.last_seen_data = np.zeros((BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
-        self.connected_jack = None
+        self.connected_jack = ("", "")
         self.jack_listener = InputJackListener()
 
         super().__init__(name)
@@ -48,12 +48,12 @@ class InputJack(Jack):
 
         :return: ``True`` if connected
         """
-        return self.connected_jack is not None
+        return self.connected_jack != ("", "")
 
     def clear(self):
         if self.is_patched():
             self.jack_listener.disconnect()
-            self.connected_jack = None
+            self.connected_jack = ("", "")
 
     def disconnect(self, output_uuid, output_id):
         if self.is_connected(output_uuid, output_id):

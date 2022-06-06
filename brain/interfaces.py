@@ -2,7 +2,7 @@ import numpy as np
 
 from dataclasses import dataclass
 from enum import auto, Enum
-from typing import Dict, List, NewType
+from typing import Dict, List
 
 from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
 
@@ -16,18 +16,15 @@ class PatchState(Enum):
     BLOCKED = auto()  #: Three or more buttons pushed or two of the same type
 
 
-ModuleUuid = NewType("ModuleUuid", str)
-
-
 @dataclass
 class HeldInputJack:
-    uuid: ModuleUuid
+    uuid: str
     id: str
 
 
 @dataclass
 class HeldOutputJack:
-    uuid: ModuleUuid
+    uuid: str
     id: str
     color: int
     port: int
@@ -44,15 +41,15 @@ class GlobalState:
     """Describes the global state: all held buttons"""
 
     patch_state: PatchState
-    held_inputs: Dict[ModuleUuid, List[HeldInputJack]]
-    held_outputs: Dict[ModuleUuid, List[HeldOutputJack]]
+    held_inputs: Dict[str, List[HeldInputJack]]
+    held_outputs: Dict[str, List[HeldOutputJack]]
 
 
 @dataclass
 class PatchConnection:
-    input_uuid: ModuleUuid
+    input_uuid: str
     input_jack_id: str
-    output_uuid: ModuleUuid
+    output_uuid: str
     output_jack_id: str
 
 
@@ -83,7 +80,7 @@ class EventHandler:
         """
         return b""
 
-    def recieved_snapshot(self, id: ModuleUuid, snapshot: bytes) -> None:
+    def recieved_snapshot(self, id: str, snapshot: bytes) -> None:
         """Called when module recieves a complete snapshot of another including patch information.
         Setup by ``get_all_snapshots``.
         """

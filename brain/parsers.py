@@ -7,14 +7,13 @@ from brain.interfaces import (
     HeldInputJack,
     HeldOutputJack,
     LocalState,
-    ModuleUuid,
     PatchConnection,
 )
 
 
 @dataclass
 class Message:
-    uuid: ModuleUuid
+    uuid: str
 
 
 @dataclass
@@ -105,7 +104,8 @@ class MessageParser:
 
         if response["message"] == "SETPRESET":
             return SetPreset(
-                response["uuid"], [self.parse_directive(d) for d in response["data"]]
+                response["uuid"],
+                map(self.parse_directive, response["data"]),
             )
 
         if response["message"] == "SETINPUTJACK":
