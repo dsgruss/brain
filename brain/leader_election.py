@@ -32,12 +32,14 @@ class Roles(Enum):
 @dataclass
 class Heartbeat(Message):
     term: int
+    iteration: int
 
 
 @dataclass
 class HeartbeatResponse(Message):
     term: int
     success: bool
+    iteration: Optional[int]
     state: Optional[LocalState]
 
 
@@ -81,14 +83,15 @@ class LeaderElection:
 
     def reset_election_timer(self):
         self.election_time = self.time_ms()
+        self.election_timeout = randrange(
+            *self.election_timeout_interval
+        )
 
     def reset_heartbeat_timer(self):
         self.heartbeat_time = self.time_ms()
 
     def election_timer_elapsed(self):
-        return (self.time_ms() - self.election_time) > randrange(
-            *self.election_timeout_interval
-        )
+        return (self.time_ms() - self.election_time) > self.election_timeout
 
     def heartbeat_timer_elapsed(self):
         return (self.time_ms() - self.heartbeat_time) > self.response_timeout
@@ -103,7 +106,7 @@ class LeaderElection:
         if isinstance(message, Heartbeat):
             if message.term < self.current_term:
                 self.patch_server.message_send(
-                    HeartbeatResponse(self.id, self.current_term, False, None)
+                    HeartbeatResponse(self.id, self.current_term, False, None, None)
                 )
             else:
                 if message.term > self.current_term:
@@ -113,7 +116,11 @@ class LeaderElection:
                 self.reset_election_timer()
                 self.patch_server.message_send(
                     HeartbeatResponse(
-                        self.id, self.current_term, True, self.local_state
+                        self.id,
+                        self.current_term,
+                        True,
+                        message.iteration,
+                        self.local_state,
                     )
                 )
 
@@ -155,14 +162,21 @@ class LeaderElection:
                 and message.term == self.current_term
                 and message.voted_for == self.id
             ):
-                self.votes_got += 1
+                if message.vote_granted:
+                    self.votes_got += 1
+                else:
+                    self.role = Roles.FOLLOWER
             if self.heartbeat_timer_elapsed():
                 if self.votes_got / len(self.seen_hosts) >= 0.5:
                     self.role = Roles.LEADER
+                    self.iteration = 0
                 else:
                     self.role = Roles.FOLLOWER
 
         if self.role == Roles.LEADER:
             if self.heartbeat_timer_elapsed():
                 self.reset_heartbeat_timer()
-                self.patch_server.message_send(Heartbeat(self.id, self.current_term))
+                self.iteration += 1
+                self.patch_server.message_send(
+                    Heartbeat(self.id, self.current_term, self.iteration)
+                )

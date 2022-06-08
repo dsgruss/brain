@@ -27,6 +27,15 @@ class LocalMessageBroadcast:
             return self.messages[self.message_idx - 1]
 
 
+def process_update(bs, ls):
+    """Helper function to simulate passage of time"""
+    start = time.time()
+    while time.time() - start < (0.4):
+        for b, l in zip(bs, ls):
+            while (msg := b.get_message()) is not None:
+                l.update(msg)
+            l.update(None)
+
 def test_localbroadcast():
     b0 = LocalMessageBroadcast("b0")
     b1 = LocalMessageBroadcast("b1")
@@ -45,92 +54,43 @@ def test_instantiation():
 def test_lone_node_leader():
     b0 = LocalMessageBroadcast("b0")
     l = LeaderElection("test0", b0)
-    start = time.time()
-    while time.time() - start < (l.election_timeout_interval[1] / 1000):
-        while (msg := b0.get_message()) is not None:
-            l.update(msg)
-        l.update(None)
+    process_update([b0], [l])
     assert l.role == Roles.LEADER
 
 def test_multi_node_leader():
     l0 = LeaderElection("test0", b0 := LocalMessageBroadcast("b0"))
     l1 = LeaderElection("test1", b1 := LocalMessageBroadcast("b1"))
     l2 = LeaderElection("test2", b2 := LocalMessageBroadcast("b2"))
-    start = time.time()
-    while time.time() - start < (l0.election_timeout_interval[1] / 1000):
-        while (msg := b0.get_message()) is not None:
-            l0.update(msg)
-        while (msg := b1.get_message()) is not None:
-            l1.update(msg)
-        while (msg := b2.get_message()) is not None:
-            l2.update(msg)
-        l0.update(None)
-        l1.update(None)
-        l2.update(None)
+    process_update([b0, b1, b2], [l0, l1, l2])
     roles = [l0.role, l1.role, l2.role]
     assert roles.count(Roles.LEADER) == 1
     assert roles.count(Roles.FOLLOWER) == 2
 
 def test_membership_change():
     l0 = LeaderElection("test0", b0 := LocalMessageBroadcast("b0"))
-    start = time.time()
-    while time.time() - start < (l0.election_timeout_interval[1] / 1000):
-        while (msg := b0.get_message()) is not None:
-            l0.update(msg)
-        l0.update(None)
+    process_update([b0], [l0])
     assert l0.role == Roles.LEADER
 
     l1 = LeaderElection("test1", b1 := LocalMessageBroadcast("b1"))
     l2 = LeaderElection("test2", b2 := LocalMessageBroadcast("b2"))
-    start = time.time()
-    while time.time() - start < (l0.election_timeout_interval[1] / 1000):
-        while (msg := b0.get_message()) is not None:
-            l0.update(msg)
-        while (msg := b1.get_message()) is not None:
-            l1.update(msg)
-        while (msg := b2.get_message()) is not None:
-            l2.update(msg)
-        l0.update(None)
-        l1.update(None)
-        l2.update(None)
+    process_update([b0, b1, b2], [l0, l1, l2])
     roles = [l0.role, l1.role, l2.role]
     assert roles.count(Roles.LEADER) == 1
     assert roles.count(Roles.FOLLOWER) == 2
 
 def test_reelection():
     l0 = LeaderElection("test0", b0 := LocalMessageBroadcast("b0"))
-    start = time.time()
-    while time.time() - start < (l0.election_timeout_interval[1] / 1000):
-        while (msg := b0.get_message()) is not None:
-            l0.update(msg)
-        l0.update(None)
+    process_update([b0], [l0])
     assert l0.role == Roles.LEADER
 
     l1 = LeaderElection("test1", b1 := LocalMessageBroadcast("b1"))
     l2 = LeaderElection("test2", b2 := LocalMessageBroadcast("b2"))
-    start = time.time()
-    while time.time() - start < (l0.election_timeout_interval[1] / 1000):
-        while (msg := b0.get_message()) is not None:
-            l0.update(msg)
-        while (msg := b1.get_message()) is not None:
-            l1.update(msg)
-        while (msg := b2.get_message()) is not None:
-            l2.update(msg)
-        l0.update(None)
-        l1.update(None)
-        l2.update(None)
+    process_update([b0, b1, b2], [l0, l1, l2])
     roles = [l0.role, l1.role, l2.role]
     assert roles.count(Roles.LEADER) == 1
     assert roles.count(Roles.FOLLOWER) == 2
 
-    start = time.time()
-    while time.time() - start < (l0.election_timeout_interval[1] / 1000):
-        while (msg := b1.get_message()) is not None:
-            l1.update(msg)
-        while (msg := b2.get_message()) is not None:
-            l2.update(msg)
-        l1.update(None)
-        l2.update(None)
+    process_update([b1, b2], [l1, l2])
     roles = [l1.role, l2.role]
     assert roles.count(Roles.LEADER) == 1
     assert roles.count(Roles.FOLLOWER) == 1
