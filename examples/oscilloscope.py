@@ -11,6 +11,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.lines import Line2D
 
 import brain
+from brain.constants import BLOCK_SIZE, CHANNELS, PACKET_RATE
 from common import tkJack
 
 import logging
@@ -19,9 +20,9 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 matplotlib.use("TkAgg")
 
 
-class Oscilloscope:
+class Oscilloscope(brain.EventHandler):
     name = "Oscilloscope"
-    time_div = 4.0  # sec
+    time_div = 1000  # blocks
     grid_size = (8, 9)
 
     def __init__(self, loop: asyncio.AbstractEventLoop, args: argparse.Namespace):
@@ -31,7 +32,7 @@ class Oscilloscope:
 
         self.mod = brain.Module(
             self.name,
-            OscilloscopeEventHandler(self),
+            self,
             id="root:virtual_examples:oscilloscope:" + str(args.id),
         )
         self.data_jack = self.mod.add_input("Data")
@@ -39,8 +40,12 @@ class Oscilloscope:
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.dataseries = [[] for _ in range(brain.CHANNELS)]
-        self.timeseries = [[] for _ in range(brain.CHANNELS)]
+        self.dataseries = np.zeros((self.time_div * BLOCK_SIZE, CHANNELS))
+        self.timeseries = np.linspace(
+            0, self.time_div / PACKET_RATE, self.time_div * BLOCK_SIZE, False
+        )
+
+        self.t = 0
 
         # loop.create_task(self.random_square_wave())
         # loop.create_task(self.sin_wave())
@@ -48,15 +53,10 @@ class Oscilloscope:
 
         loop.create_task(self.module_task())
 
-    def data_callback(self):
-        result = self.data_jack.get_data()
-        if len(self.timeseries[0]) == 0:
-            t = 0
-        else:
-            t = self.timeseries[0][-1] + (1 / brain.PACKET_RATE)
-        for i in range(brain.CHANNELS):
-            self.dataseries[i].append(result[0, i])
-            self.timeseries[i].append(t)
+    def process(self, input):
+        self.dataseries[:-BLOCK_SIZE, :] = self.dataseries[BLOCK_SIZE:, :]
+        self.dataseries[-BLOCK_SIZE:, :] = input[0, :, :]
+        return np.zeros((0, BLOCK_SIZE, CHANNELS))
 
     def ui_setup(self):
         self.root = tk.Tk()
@@ -82,7 +82,7 @@ class Oscilloscope:
         self.plot_lines = [Line2D([], [], color=f"C{i}") for i in range(brain.CHANNELS)]
         for line in self.plot_lines:
             ax.add_line(line)
-        ax.set_xlim([0, self.time_div])
+        ax.set_xlim([0, self.time_div / PACKET_RATE])
         ax.set_ylim([-1000, 30000])
         ax.xaxis.set_ticklabels([])
         ax.yaxis.set_ticklabels([])
@@ -94,28 +94,31 @@ class Oscilloscope:
             try:
                 self.data_tkjack.update_display()
 
-                for i in range(brain.CHANNELS):
-                    while (
-                        len(self.timeseries[i]) >= 2
-                        and self.timeseries[i][-1] - self.timeseries[i][0]
-                        > self.time_div
-                    ):
-                        self.timeseries[i].pop(0)
-                        self.dataseries[i].pop(0)
+                # i = 0
+                # while (
+                #     i < len(self.timeseries)
+                #     and self.timeseries[-1] - self.timeseries[i]
+                #     > self.time_div
+                # ):
+                #     i += 1
+                # self.timeseries = self.timeseries[i:]
+                # self.dataseries = self.dataseries[i:, :]
 
                 for i, line in enumerate(self.plot_lines):
+                    tvals = np.linspace(0, self.time_div / PACKET_RATE, 100)
+                    dinterp = np.interp(tvals, self.dataseries[:, i], self.timeseries)
                     line.set_data(
-                        [ts - self.timeseries[i][0] for ts in self.timeseries[i]],
-                        self.dataseries[i],
+                        tvals,
+                        dinterp,
                     )
                 self.fig_canvas.draw()
                 self.root.update()
                 await asyncio.sleep(interval)
             except tk.TclError:
-                self.shutdown()
+                self.halt()
                 break
 
-    def shutdown(self):
+    def halt(self):
         for task in asyncio.all_tasks():
             task.cancel()
         asyncio.ensure_future(self.quit())
@@ -128,7 +131,7 @@ class Oscilloscope:
     async def quit(self):
         self.loop.stop()
 
-    def patching_callback(self, state):
+    def patch(self, state):
         self.data_tkjack.patching_callback(state)
 
     async def random_square_wave(self):
@@ -181,20 +184,6 @@ class Oscilloscope:
                 self.timeseries[0].pop(0)
                 self.dataseries[0].pop(0)
             await asyncio.sleep(1 / 100)
-
-
-class OscilloscopeEventHandler(brain.EventHandler):
-    def __init__(self, app: Oscilloscope) -> None:
-        self.app = app
-
-    def patch(self, state: brain.PatchState) -> None:
-        self.app.patching_callback(state)
-
-    def process(self) -> None:
-        self.app.data_callback()
-
-    def halt(self) -> None:
-        self.app.shutdown()
 
 
 if __name__ == "__main__":
