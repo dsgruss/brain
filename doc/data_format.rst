@@ -68,7 +68,7 @@ a note. Therefore, the conversion from a V/Oct signal to Hz is::
 
   frequency = 440 * 2 ^ (v_oct / (512 * 12))
 
-This is about 5 cents difference per bit around 440 Hz.
+This is about 0.2 cents semitone resultion per bit.
 
 Gates and Triggers
 ------------------
