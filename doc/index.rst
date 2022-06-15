@@ -6,13 +6,12 @@
 Welcome to brain's documentation!
 =================================
 
-
-
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-
+   data_format
+   api_reference
 
 Indices and tables
 ==================
