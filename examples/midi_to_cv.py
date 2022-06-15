@@ -7,7 +7,7 @@ import tkinter as tk
 from dataclasses import dataclass
 
 import brain
-from brain.constants import BLOCK_SIZE, CHANNELS
+from brain.constants import BLOCK_SIZE, CHANNELS, midi_note_to_voct
 from common import tkJack
 
 import logging
@@ -149,7 +149,7 @@ class MidiToCV(brain.EventHandler):
         output = np.zeros((6, BLOCK_SIZE, CHANNELS), dtype=brain.SAMPLE_TYPE)
 
         for i, v in enumerate(self.voices):
-            output[0, :, i].fill(v.note * 256)
+            output[0, :, i].fill(midi_note_to_voct(v.note))
             output[1, :, i].fill(16000 if v.on else 0)
             output[5, :, i].fill(self.mod_wheel * 256)
 

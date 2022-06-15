@@ -4,7 +4,7 @@ import numpy as np
 import tkinter as tk
 
 import brain
-from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
+from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE, voct_to_freq_scale
 from common import tkJack, tkKnob
 
 from filter_core import LadderFilter
@@ -86,7 +86,7 @@ class Filter(brain.EventHandler):
         result = np.zeros((1, BLOCK_SIZE, CHANNELS))
         for i, filter in enumerate(self.filters):
             if self.mod.is_patched(self.key_jack):
-                freq = filter_freq * 2 ** ((input[1, 0, i] / 256 - 69) / 12)
+                freq = filter_freq * voct_to_freq_scale(input[1, 0, i])
             else:
                 freq = filter_freq
             result[0, :, i] = filter.block_process(

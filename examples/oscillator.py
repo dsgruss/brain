@@ -6,7 +6,7 @@ import tkinter as tk
 import brain
 
 import logging
-from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
+from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE, voct_to_frequency
 
 from examples.common import tkJack
 
@@ -135,7 +135,7 @@ class Oscillator(brain.EventHandler):
         output = np.zeros((4, BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
 
         for i, v in enumerate(input[0, 0, :]):
-            f = 440 * 2 ** ((v / 256 - 69) / 12)
+            f = voct_to_frequency(v)
             for j in range(brain.BLOCK_SIZE):
                 output[0, j, i] = self.sin_wavetable[int(self.wavetable_pos[i])]
                 output[1, j, i] = self.tri_wavetable[int(self.wavetable_pos[i])]

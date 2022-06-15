@@ -25,3 +25,15 @@ BUFFER_SIZE: Final = 1
 
 #: Sample data type
 SAMPLE_TYPE: Final = np.int16
+
+def midi_note_to_voct(note):
+    """Translates a MIDI note number to V/Oct value"""
+    return (note - 69) * 512
+
+def voct_to_frequency(v_oct):
+    """Translates a V/Oct value to frequency in Hz"""
+    return 440 * voct_to_freq_scale(v_oct)
+
+def voct_to_freq_scale(v_oct):
+    """Translates a V/Oct value to a scale value"""
+    return 2 ** (v_oct / (512 * 12))
