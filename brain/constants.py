@@ -3,7 +3,10 @@ import numpy as np
 from typing import Final
 
 #: Preferred communication subnet in case multiple network interfaces are present
-PREFERRED_BROADCAST: Final = "127.255.255.255"
+PREFERRED_BROADCAST: Final = "10.255.255.255"
+
+#: Multicast address used for patching and systems communication
+PATCH_ADDR: Final = "239.0.0.0"
 
 #: Port used to establish the global state and create new patch connections
 PATCH_PORT: Final = 19874
@@ -26,13 +29,16 @@ BUFFER_SIZE: Final = 1
 #: Sample data type
 SAMPLE_TYPE: Final = np.int16
 
+
 def midi_note_to_voct(note):
     """Translates a MIDI note number to V/Oct value"""
     return (note - 69) * 512
 
+
 def voct_to_frequency(v_oct):
     """Translates a V/Oct value to frequency in Hz"""
     return 440 * voct_to_freq_scale(v_oct)
+
 
 def voct_to_freq_scale(v_oct):
     """Translates a V/Oct value to a scale value"""

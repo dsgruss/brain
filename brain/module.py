@@ -89,9 +89,7 @@ class Module:
             if detail["broadcast"] == PREFERRED_BROADCAST:
                 self.broadcast_addr = detail
 
-        self.patch_server = PatchServer(
-            self.uuid, self.broadcast_addr["addr"], self.broadcast_addr["broadcast"]
-        )
+        self.patch_server = PatchServer(self.uuid, self.broadcast_addr["addr"])
 
     def update(self):
         """Process all pending tasks: send and recieve directives, audio and control data and
