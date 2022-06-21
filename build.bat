@@ -1,3 +1,4 @@
+protoc --python_out=brain proto\patching.proto
 cd doc
 call make html
 cd ..

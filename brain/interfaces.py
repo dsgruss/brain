@@ -5,6 +5,7 @@ from enum import auto, Enum
 from typing import Dict, List
 
 from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
+from brain.proto.patching_pb2 import HeldInputJack, HeldOutputJack
 
 
 class PatchState(Enum):
@@ -17,41 +18,12 @@ class PatchState(Enum):
 
 
 @dataclass
-class HeldInputJack:
-    uuid: str
-    id: str
-
-
-@dataclass
-class HeldOutputJack:
-    uuid: str
-    id: str
-    color: int
-    addr: str
-    port: int
-
-
-@dataclass
-class LocalState:
-    held_inputs: List[HeldInputJack]
-    held_outputs: List[HeldOutputJack]
-
-
-@dataclass
 class GlobalState:
     """Describes the global state: all held buttons"""
 
     patch_state: PatchState
     held_inputs: Dict[str, List[HeldInputJack]]
     held_outputs: Dict[str, List[HeldOutputJack]]
-
-
-@dataclass
-class PatchConnection:
-    input_uuid: str
-    input_jack_id: str
-    output_uuid: str
-    output_jack_id: str
 
 
 class EventHandler:

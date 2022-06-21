@@ -36,6 +36,7 @@ def process_update(bs, ls):
                 l.update(msg)
             l.update(None)
 
+
 def test_localbroadcast():
     b0 = LocalMessageBroadcast("b0")
     b1 = LocalMessageBroadcast("b1")
@@ -47,15 +48,18 @@ def test_localbroadcast():
     assert b1.get_message() == "TESTTESTTEST"
     assert b1.get_message() is None
 
+
 def test_instantiation():
     l = LeaderElection("test0", LocalMessageBroadcast("b"))
     assert l.role == Roles.FOLLOWER
+
 
 def test_lone_node_leader():
     b0 = LocalMessageBroadcast("b0")
     l = LeaderElection("test0", b0)
     process_update([b0], [l])
     assert l.role == Roles.LEADER
+
 
 def test_multi_node_leader():
     l0 = LeaderElection("test0", b0 := LocalMessageBroadcast("b0"))
@@ -65,6 +69,7 @@ def test_multi_node_leader():
     roles = [l0.role, l1.role, l2.role]
     assert roles.count(Roles.LEADER) == 1
     assert roles.count(Roles.FOLLOWER) == 2
+
 
 def test_membership_change():
     l0 = LeaderElection("test0", b0 := LocalMessageBroadcast("b0"))
@@ -77,6 +82,7 @@ def test_membership_change():
     roles = [l0.role, l1.role, l2.role]
     assert roles.count(Roles.LEADER) == 1
     assert roles.count(Roles.FOLLOWER) == 2
+
 
 def test_reelection():
     l0 = LeaderElection("test0", b0 := LocalMessageBroadcast("b0"))

@@ -2,17 +2,20 @@ from brain import __version__, Module, PatchState
 
 
 def test_version():
-    assert __version__ == '0.1.0'
+    assert __version__ == "0.1.0"
+
 
 def test_load():
     mod = Module("test0")
     assert mod.get_patch_state() == PatchState.IDLE
+
 
 def test_multiload():
     mod0 = Module("test0")
     mod1 = Module("test1")
     assert mod0.get_patch_state() == PatchState.IDLE
     assert mod1.get_patch_state() == PatchState.IDLE
+
 
 def test_add_input_jack():
     mod = Module("test0")
@@ -21,6 +24,7 @@ def test_add_input_jack():
     assert mod.get_patch_state() == PatchState.IDLE
     mod.set_patch_enabled(jack, True)
     assert mod.get_patch_state() == PatchState.PATCH_ENABLED
+
 
 def test_add_input_jack_multiload():
     mod0 = Module("test0")

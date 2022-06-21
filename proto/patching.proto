@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+message HeldInputJack {
+    string uuid = 1;
+    string id = 2;
+}
+
+message HeldOutputJack {
+    string uuid = 1;
+    string id = 2;
+    int32 color = 3;
+    string addr = 4;
+    int32 port = 5;
+}
+
+message LocalState {
+    repeated HeldInputJack held_inputs = 1;
+    repeated HeldOutputJack held_outputs = 2;
+}
+
+message PatchConnection {
+    string input_uuid = 1;
+    string input_jack_id = 2;
+    string output_uuid = 3;
+    string output_jack_id = 4;
+}
+
+message Update {
+    string uuid = 1;
+    LocalState local_state = 2;
+}
+
+message SnapshotRequest {
+    string uuid = 1;
+}
+
+message SnapshotResponse {
+    string uuid = 1;
+    bytes data = 2;
+    repeated PatchConnection patched = 3;
+}
+
+message SetPreset {
+    string uuid = 1;
+    repeated SnapshotResponse data = 2;
+}
+
+message SetInputJack {
+    string uuid = 1;
+    HeldOutputJack source = 2;
+    PatchConnection connection = 3;
+}
+
+message Halt {
+    string uuid = 1;
+}
+
+message Directive {
+    oneof directive {
+        Update update = 1;
+        SnapshotRequest snapshot_request = 2;
+        SnapshotResponse snapshot_response = 3;
+        SetPreset set_preset = 4;
+        SetInputJack set_input_jack = 5;
+        Halt halt = 6;
+    }
+}

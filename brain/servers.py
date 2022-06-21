@@ -4,7 +4,8 @@ import socket
 from typing import Optional
 
 from brain.constants import PATCH_ADDR, PATCH_PORT
-from brain.parsers import Message, MessageParser
+from brain.parsers import MessageParser
+from brain.proto.patching_pb2 import Directive
 
 
 class InputJackListener:
@@ -94,13 +95,18 @@ class PatchServer:
                 return b""
         return data
 
-    def message_send(self, message: Message) -> None:
-        logging.info("=> " + str((PATCH_ADDR, PATCH_PORT)) + ": " + str(message))
+    def message_send(self, message: Directive) -> None:
+        logging.info(
+            "=> "
+            + str((PATCH_ADDR, PATCH_PORT))
+            + ": "
+            + str(message).replace("\n", " ")
+        )
         payload = self.parser.create_directive(message)
         self.sock.sendto(payload, (PATCH_ADDR, PATCH_PORT))
 
-    def get_message(self) -> Optional[Message]:
+    def get_message(self) -> Optional[Directive]:
         message = self.parser.parse_directive(self.get_data())
         if message is not None:
-            logging.info("<= " + str(message))
+            logging.info("<= " + str(message).replace("\n", " "))
         return message

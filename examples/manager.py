@@ -185,6 +185,7 @@ class Manager(brain.EventHandler):
         self.statusbar.config(text=str(state))
 
     def get_snapshots(self):
+        self.snapshots = {}
         self.mod.get_all_snapshots()
 
     def recieved_snapshot(self, uuid, snapshot):
@@ -206,12 +207,12 @@ class Manager(brain.EventHandler):
 
 
 init_patch = {
-    "root:virtual_examples:midi_to_cv:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:midi_to_cv:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "1", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:oscillator:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:asr_envelope:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "1"}]}',
-    "root:virtual_examples:asr_envelope:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:asr_envelope:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:asr_envelope:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "1"}, {"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "3", "output_uuid": "root:virtual_examples:asr_envelope:0", "output_jack_id": "1"}]}',
-    "root:virtual_examples:oscillator:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:oscillator:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:oscillator:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:oscillator:0", "output_jack_id": "3"}]}',
-    "root:virtual_examples:filter:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:filter:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:oscillator:0", "output_jack_id": "3"}, {"input_uuid": "root:virtual_examples:filter:0", "input_jack_id": "1", "output_uuid": "root:virtual_examples:midi_to_cv:0", "output_jack_id": "0"}, {"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:filter:0", "output_jack_id": "2"}]}',
-    "root:virtual_examples:mixer:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:mixer:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:filter:0", "output_jack_id": "2"}, {"input_uuid": "root:virtual_examples:mixer:0", "input_jack_id": "3", "output_uuid": "root:virtual_examples:asr_envelope:0", "output_jack_id": "1"}, {"input_uuid": "root:virtual_examples:audio_interface:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:mixer:0", "output_jack_id": "6"}]}',
-    "root:virtual_examples:audio_interface:0": b'{"message": "SNAPSHOTRESPONSE", "uuid": "root:virtual_examples:audio_interface:0", "data": "", "patched": [{"input_uuid": "root:virtual_examples:audio_interface:0", "input_jack_id": "0", "output_uuid": "root:virtual_examples:mixer:0", "output_jack_id": "6"}]}',
+    "root:virtual_examples:asr_envelope:0": b'\n$root:virtual_examples:asr_envelope:0\x1aP\n$root:virtual_examples:asr_envelope:0\x12\x010\x1a"root:virtual_examples:midi_to_cv:0"\x011\x1aK\n\x1droot:virtual_examples:mixer:0\x12\x013\x1a$root:virtual_examples:asr_envelope:0"\x011',
+    "root:virtual_examples:midi_to_cv:0": b'\n"root:virtual_examples:midi_to_cv:0\x1aJ\n\x1eroot:virtual_examples:filter:0\x12\x011\x1a"root:virtual_examples:midi_to_cv:0"\x010\x1aN\n"root:virtual_examples:oscillator:0\x12\x010\x1a"root:virtual_examples:midi_to_cv:0"\x010\x1aP\n$root:virtual_examples:asr_envelope:0\x12\x010\x1a"root:virtual_examples:midi_to_cv:0"\x011',
+    "root:virtual_examples:mixer:0": b'\n\x1droot:virtual_examples:mixer:0\x1aE\n\x1droot:virtual_examples:mixer:0\x12\x010\x1a\x1eroot:virtual_examples:filter:0"\x012\x1aK\n\x1droot:virtual_examples:mixer:0\x12\x013\x1a$root:virtual_examples:asr_envelope:0"\x011\x1aN\n\'root:virtual_examples:audio_interface:0\x12\x010\x1a\x1droot:virtual_examples:mixer:0"\x016',
+    "root:virtual_examples:audio_interface:0": b"\n'root:virtual_examples:audio_interface:0\x1aN\n'root:virtual_examples:audio_interface:0\x12\x010\x1a\x1droot:virtual_examples:mixer:0\"\x016",
+    "root:virtual_examples:filter:0": b'\n\x1eroot:virtual_examples:filter:0\x1aJ\n\x1eroot:virtual_examples:filter:0\x12\x010\x1a"root:virtual_examples:oscillator:0"\x013\x1aJ\n\x1eroot:virtual_examples:filter:0\x12\x011\x1a"root:virtual_examples:midi_to_cv:0"\x010\x1aE\n\x1droot:virtual_examples:mixer:0\x12\x010\x1a\x1eroot:virtual_examples:filter:0"\x012',
+    "root:virtual_examples:oscillator:0": b'\n"root:virtual_examples:oscillator:0\x1aN\n"root:virtual_examples:oscillator:0\x12\x010\x1a"root:virtual_examples:midi_to_cv:0"\x010\x1aJ\n\x1eroot:virtual_examples:filter:0\x12\x010\x1a"root:virtual_examples:oscillator:0"\x013',
 }
 
 if __name__ == "__main__":
