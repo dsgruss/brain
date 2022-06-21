@@ -65,13 +65,13 @@ class InputJack(Jack):
         logging.info(((output_uuid, output_id)))
         return self.connected_jack == (output_uuid, output_id)
 
-    def connect(self, address, port, output_color, output_uuid, output_id):
+    def connect(self, address, mult_addr, port, output_color, output_uuid, output_id):
         if self.is_patched():
             self.clear()
         self.color = output_color
         self.connected_jack = (output_uuid, output_id)
 
-        self.jack_listener.connect(address, port)
+        self.jack_listener.connect(address, mult_addr, port)
 
     def update(self):
         if len(data := self.jack_listener.get_data()) != 0:
@@ -110,7 +110,7 @@ class OutputJack(Jack):
     """An output jack which sends data to input jacks over the network. This is not
     typically instantiated directly but rather through ``Module.add_output``.
 
-    :param address: ip4 address to sink data
+    :param address: Local ip4 address to use multicast
 
     :param name: Identifier describing the output jack
 

@@ -129,7 +129,7 @@ class Module:
 
         :return: The created jack instance
         """
-        jack = OutputJack(self.broadcast_addr["broadcast"], name, color)
+        jack = OutputJack(self.broadcast_addr["addr"], name, color)
         self.outputs[jack.id] = jack
         return jack
 
@@ -190,7 +190,9 @@ class Module:
             if jack.patch_enabled
         ]
         held_outputs = [
-            HeldOutputJack(self.uuid, jack.id, jack.color, jack.endpoint[1])
+            HeldOutputJack(
+                self.uuid, jack.id, jack.color, jack.endpoint[0], jack.endpoint[1]
+            )
             for jack in self.outputs.values()
             if jack.patch_enabled
         ]
@@ -285,6 +287,7 @@ class Module:
         else:
             input_jack.connect(
                 self.broadcast_addr["addr"],
+                output.addr,
                 output.port,
                 output.color,
                 output.uuid,
@@ -383,6 +386,7 @@ class Module:
             if message.connection.input_uuid == self.uuid:
                 self.inputs[message.connection.input_jack_id].connect(
                     self.broadcast_addr["addr"],
+                    message.source.addr,
                     message.source.port,
                     message.source.color,
                     message.connection.output_uuid,
@@ -429,7 +433,11 @@ class Module:
                     SetInputJack(
                         self.uuid,
                         HeldOutputJack(
-                            self.uuid, id, out_jack.color, out_jack.endpoint[1]
+                            self.uuid,
+                            id,
+                            out_jack.color,
+                            out_jack.endpoint[0],
+                            out_jack.endpoint[1],
                         ),
                         p,
                     )

@@ -45,7 +45,7 @@ completed library.
 Todo
 ----
 
-- [ ] Move broadcasts to multicast (and find a way to test locally)
+- [X] Move broadcasts to multicast (and find a way to test locally)
 - [ ] Add consensus algorithm for patch states
 - [ ] Add state capture and restore
 - [ ] Add heartbeats for patch status and for global patch updates

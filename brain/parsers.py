@@ -77,10 +77,12 @@ class MessageParser:
                     return None
                 state.held_inputs.append(HeldInputJack(response["uuid"], d["id"]))
             for d in response["state"].get("outputs") or []:
-                if any(k not in d for k in ("id", "color", "port")):
+                if any(k not in d for k in ("id", "color", "addr", "port")):
                     return None
                 state.held_outputs.append(
-                    HeldOutputJack(response["uuid"], d["id"], d["color"], d["port"])
+                    HeldOutputJack(
+                        response["uuid"], d["id"], d["color"], d["addr"], d["port"]
+                    )
                 )
             return Update(response["uuid"], state)
 
@@ -131,7 +133,7 @@ class MessageParser:
                 raise ValueError
             inputs = [{"id": j.id} for j in message.local_state.held_inputs]
             outputs = [
-                {"id": j.id, "color": j.color, "port": j.port}
+                {"id": j.id, "color": j.color, "addr": j.addr, "port": j.port}
                 for j in message.local_state.held_outputs
             ]
             json_msg = {
@@ -179,6 +181,7 @@ class MessageParser:
                     "uuid": message.source.uuid,
                     "id": message.source.id,
                     "color": message.source.color,
+                    "addr": message.source.addr,
                     "port": message.source.port,
                 },
                 "connection": {

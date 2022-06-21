@@ -27,6 +27,7 @@ class HeldOutputJack:
     uuid: str
     id: str
     color: int
+    addr: str
     port: int
 
 
