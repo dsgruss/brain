@@ -14,52 +14,25 @@
 # This can be expanded to keep track of all current patch connections made in the future, if
 # required.
 
-from dataclasses import dataclass
+from enum import Enum
 from random import randrange
 from time import perf_counter_ns
-from brain.interfaces import HeldInputJack, HeldOutputJack, LocalState, PatchState
-from brain.parsers import Message
-from enum import Enum
-from typing import Final, Optional, Set
+from typing import Final, Set
+
+from brain.proto.patching_pb2 import (
+    LocalState,
+    Directive,
+    Heartbeat,
+    HeartbeatResponse,
+    RequestVote,
+    RequestVoteResponse,
+)
 
 
 class Roles(Enum):
     FOLLOWER = "FOLLOWER"
     CANDIDATE = "CANDIDATE"
     LEADER = "LEADER"
-
-
-@dataclass
-class Heartbeat(Message):
-    term: int
-    iteration: int
-
-
-@dataclass
-class HeartbeatResponse(Message):
-    term: int
-    success: bool
-    iteration: Optional[int]
-    state: Optional[LocalState]
-
-
-@dataclass
-class GlobalStateUpdate(Message):
-    patch_state: PatchState
-    input: Optional[HeldInputJack]
-    output: Optional[HeldOutputJack]
-
-
-@dataclass
-class RequestVote(Message):
-    term: int
-
-
-@dataclass
-class RequestVoteResponse(Message):
-    term: int
-    voted_for: str
-    vote_granted: bool
 
 
 class LeaderElection:
@@ -75,7 +48,7 @@ class LeaderElection:
         self.id = id
         self.patch_server = patch_server
         self.seen_hosts: Set[str] = set()
-        self.local_state = LocalState([], [])
+        self.local_state = LocalState(held_inputs=[], held_outputs=[])
         self.reset_election_timer()
 
     def time_ms(self):
@@ -83,9 +56,7 @@ class LeaderElection:
 
     def reset_election_timer(self):
         self.election_time = self.time_ms()
-        self.election_timeout = randrange(
-            *self.election_timeout_interval
-        )
+        self.election_timeout = randrange(*self.election_timeout_interval)
 
     def reset_heartbeat_timer(self):
         self.heartbeat_time = self.time_ms()
@@ -96,49 +67,81 @@ class LeaderElection:
     def heartbeat_timer_elapsed(self):
         return (self.time_ms() - self.heartbeat_time) > self.response_timeout
 
-    def update(self, message: Message):
+    def update(self, message: Directive):
 
         if message is not None:
-            self.seen_hosts.add(message.uuid)
-            if message.uuid == self.id:
-                return
+            for field in [
+                "heartbeat",
+                "heartbeat_response",
+                "global_state_update",
+                "request_vote",
+                "request_vote_response",
+            ]:
+                try:
+                    id = getattr(message, field).uuid
+                    self.seen_hosts.add(id)
+                    if id == self.id:
+                        return
+                except AttributeError:
+                    continue
 
-        if isinstance(message, Heartbeat):
-            if message.term < self.current_term:
+        if message and message.HasField("heartbeat"):
+            if message.heartbeat.term < self.current_term:
                 self.patch_server.message_send(
-                    HeartbeatResponse(self.id, self.current_term, False, None, None)
+                    Directive(
+                        heartbeat_response=HeartbeatResponse(
+                            uuid=self.id, term=self.current_term, success=False
+                        )
+                    )
                 )
             else:
-                if message.term > self.current_term:
-                    self.current_term = message.term
+                if message.heartbeat.term > self.current_term:
+                    self.current_term = message.heartbeat.term
                     self.role = Roles.FOLLOWER
-                    self.voted_for = message.uuid
+                    self.voted_for = message.heartbeat.uuid
                 self.reset_election_timer()
                 self.patch_server.message_send(
-                    HeartbeatResponse(
-                        self.id,
-                        self.current_term,
-                        True,
-                        message.iteration,
-                        self.local_state,
+                    Directive(
+                        heartbeat_response=HeartbeatResponse(
+                            uuid=self.id,
+                            term=self.current_term,
+                            success=True,
+                            iteration=message.heartbeat.iteration,
+                            state=self.local_state,
+                        )
                     )
                 )
 
-        if isinstance(message, RequestVote):
-            if message.term < self.current_term:
+        if message and message.HasField("request_vote"):
+            if message.request_vote.term < self.current_term:
                 self.patch_server.message_send(
-                    RequestVoteResponse(self.id, self.current_term, message.uuid, False)
+                    Directive(
+                        request_vote_response=RequestVoteResponse(
+                            uuid=self.id,
+                            term=self.current_term,
+                            voted_for=message.request_vote.uuid,
+                            vote_granted=False,
+                        )
+                    )
                 )
             else:
-                if message.term > self.current_term:
-                    self.current_term = message.term
+                if message.request_vote.term > self.current_term:
+                    self.current_term = message.request_vote.term
                     self.role = Roles.FOLLOWER
                     self.voted_for = None
-                if self.voted_for is None or self.voted_for == message.uuid:
+                if (
+                    self.voted_for is None
+                    or self.voted_for == message.request_vote.uuid
+                ):
                     self.reset_election_timer()
                     self.patch_server.message_send(
-                        RequestVoteResponse(
-                            self.id, self.current_term, message.uuid, True
+                        Directive(
+                            request_vote_response=RequestVoteResponse(
+                                uuid=self.id,
+                                term=self.current_term,
+                                voted_for=message.request_vote.uuid,
+                                vote_granted=True,
+                            )
                         )
                     )
 
@@ -150,19 +153,28 @@ class LeaderElection:
             self.votes_got = 1
             self.reset_election_timer()
             self.reset_heartbeat_timer()
-            self.patch_server.message_send(RequestVote(self.id, self.current_term))
+            self.patch_server.message_send(
+                Directive(
+                    request_vote=RequestVote(uuid=self.id, term=self.current_term)
+                )
+            )
 
         if self.role == Roles.CANDIDATE:
-            if isinstance(message, Heartbeat) and message.term == self.current_term:
+            if (
+                message
+                and message.HasField("heartbeat")
+                and message.heartbeat.term == self.current_term
+            ):
                 self.role = Roles.FOLLOWER
-                self.voted_for = message.uuid
+                self.voted_for = message.heartbeat.uuid
                 self.update(message)
             if (
-                isinstance(message, RequestVoteResponse)
-                and message.term == self.current_term
-                and message.voted_for == self.id
+                message
+                and message.HasField("request_vote_response")
+                and message.request_vote_response.term == self.current_term
+                and message.request_vote_response.voted_for == self.id
             ):
-                if message.vote_granted:
+                if message.request_vote_response.vote_granted:
                     self.votes_got += 1
                 else:
                     self.role = Roles.FOLLOWER
@@ -178,5 +190,11 @@ class LeaderElection:
                 self.reset_heartbeat_timer()
                 self.iteration += 1
                 self.patch_server.message_send(
-                    Heartbeat(self.id, self.current_term, self.iteration)
+                    Directive(
+                        heartbeat=Heartbeat(
+                            uuid=self.id,
+                            term=self.current_term,
+                            iteration=self.iteration,
+                        )
+                    )
                 )

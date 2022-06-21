@@ -1,5 +1,16 @@
 syntax = "proto3";
 
+// Convenience structures for defining current patching states and connections
+
+enum PatchState {
+    // Enum used to track a global state over all connected modules
+
+    IDLE = 0;  // No buttons pushed across all modules
+    PATCH_ENABLED = 1;  // One single button pushed
+    PATCH_TOGGLED = 2;  // Two buttons pushed, consisting of an input and output
+    BLOCKED = 3; // Three or more buttons pushed or two of the same type
+}
+
 message HeldInputJack {
     string uuid = 1;
     string id = 2;
@@ -24,6 +35,8 @@ message PatchConnection {
     string output_uuid = 3;
     string output_jack_id = 4;
 }
+
+// Patch update and preset handling messages
 
 message Update {
     string uuid = 1;
@@ -55,6 +68,43 @@ message Halt {
     string uuid = 1;
 }
 
+// Leader election and state sync
+
+message Heartbeat {
+    string uuid = 1;
+    int32 term = 2;
+    int32 iteration = 3;
+}
+
+message HeartbeatResponse {
+    string uuid = 1;
+    int32 term = 2;
+    bool success = 3;
+    int32 iteration = 4;
+    LocalState state = 5;
+}
+
+message GlobalStateUpdate {
+    string uuid = 1;
+    PatchState patch_state = 2;
+    HeldInputJack input = 3;
+    HeldOutputJack output = 4;
+}
+
+message RequestVote {
+    string uuid = 1;
+    int32 term = 2;
+}
+
+message RequestVoteResponse {
+    string uuid = 1;
+    int32 term = 2;
+    string voted_for = 3;
+    bool vote_granted = 4;
+}
+
+// Directives are multicast, so message type is determined at runtime
+
 message Directive {
     oneof directive {
         Update update = 1;
@@ -63,5 +113,10 @@ message Directive {
         SetPreset set_preset = 4;
         SetInputJack set_input_jack = 5;
         Halt halt = 6;
+        Heartbeat heartbeat = 7;
+        HeartbeatResponse heartbeat_response = 8;
+        GlobalStateUpdate global_state_update = 9;
+        RequestVote request_vote = 10;
+        RequestVoteResponse request_vote_response = 11;
     }
 }
