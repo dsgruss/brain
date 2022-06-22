@@ -1,5 +1,5 @@
 from brain.parsers import MessageParser
-from brain.proto.patching_pb2 import (
+from brain.shared_proto import (
     Halt,
     Update,
     LocalState,
@@ -13,46 +13,41 @@ from brain.proto.patching_pb2 import (
 
 def test_halt():
     m = MessageParser()
-    msg = Directive(halt=Halt(uuid="GLOBAL"))
+    msg = Halt(uuid="GLOBAL")
     assert msg == m.parse_directive(m.create_directive(msg))
 
 
 def test_update():
     m = MessageParser()
-    msg = Directive(
-        update=Update(
+    msg = Update(
             uuid="testuuid",
             local_state=LocalState(
                 held_inputs=[HeldInputJack(uuid="testuuid", id="1")], held_outputs=[]
             ),
         )
-    )
     print(m.create_directive(msg))
     assert str(msg) == str(m.parse_directive(m.create_directive(msg)))
 
 
 def test_snapshotrequest():
     m = MessageParser()
-    msg = Directive(snapshot_request=SnapshotRequest(uuid="testuuid"))
+    msg = SnapshotRequest(uuid="testuuid")
     assert str(msg) == str(m.parse_directive(m.create_directive(msg)))
 
 
 def test_snapshotresponse():
     m = MessageParser()
-    msg = Directive(
-        snapshot_response=SnapshotResponse(
-            uuid="testuuid", data=b"123912378123", patched=[]
+    msg = SnapshotResponse(
+            uuid="testuuid", data="123912378123", patched=[]
         )
-    )
     assert str(msg) == str(m.parse_directive(m.create_directive(msg)))
 
 
 def test_snapshotresponse():
     m = MessageParser()
-    msg = Directive(
-        snapshot_response=SnapshotResponse(
+    msg = SnapshotResponse(
             uuid="testuuid",
-            data=b"123912378123",
+            data="123912378123",
             patched=[
                 PatchConnection(
                     input_uuid="testuuid",
@@ -62,5 +57,4 @@ def test_snapshotresponse():
                 )
             ],
         )
-    )
     assert str(msg) == str(m.parse_directive(m.create_directive(msg)))

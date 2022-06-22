@@ -1,5 +1,3 @@
-from base64 import b16encode
-import logging
 import time
 from brain.leader_election import LeaderElection, Roles
 

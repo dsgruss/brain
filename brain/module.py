@@ -21,9 +21,9 @@ from .interfaces import (
     PatchState,
 )
 from .jacks import Jack, InputJack, OutputJack
-from .parsers import MessageParser
 from .servers import PatchServer
-from .proto.patching_pb2 import (
+from .shared_proto import (
+    Directive,
     HeldInputJack,
     HeldOutputJack,
     LocalState,
@@ -34,7 +34,6 @@ from .proto.patching_pb2 import (
     PatchConnection,
     SetPreset,
     SetInputJack,
-    Directive,
 )
 
 
@@ -201,13 +200,11 @@ class Module:
             if jack.patch_enabled
         ]
         self.patch_server.message_send(
-            Directive(
-                update=Update(
-                    uuid=self.uuid,
-                    local_state=LocalState(
-                        held_inputs=held_inputs, held_outputs=held_outputs
-                    ),
-                )
+            Update(
+                uuid=self.uuid,
+                local_state=LocalState(
+                    held_inputs=held_inputs, held_outputs=held_outputs
+                ),
             )
         )
         self.global_state.held_inputs[self.uuid] = held_inputs
@@ -219,7 +216,7 @@ class Module:
 
     def halt_all(self) -> None:
         """Sends a halt directive to all connected modules"""
-        self.patch_server.message_send(Directive(halt=Halt(uuid="GLOBAL")))
+        self.patch_server.message_send(Halt(uuid="GLOBAL"))
 
     def update_patch_state(self):
         """Manages changes in the global state"""
@@ -343,20 +340,20 @@ class Module:
     def event_process(self, message: Directive):
         """Primary event handler for messages on the patching port"""
 
-        if message.HasField("halt"):
+        if isinstance(message, Halt):
             self.halt_callback()
 
-        if message.HasField("update"):
+        if isinstance(message, Update):
             self.global_state.held_inputs[
-                message.update.uuid
-            ] = message.update.local_state.held_inputs
+                message.uuid
+            ] = message.local_state.held_inputs
             self.global_state.held_outputs[
-                message.update.uuid
-            ] = message.update.local_state.held_outputs
+                message.uuid
+            ] = message.local_state.held_outputs
 
             self.update_patch_state()
 
-        if message.HasField("snapshot_request"):
+        if isinstance(message, SnapshotRequest):
             patches = []
             for id, in_jack in self.inputs.items():
                 if in_jack.is_patched():
@@ -379,24 +376,22 @@ class Module:
                         )
                     )
             self.patch_server.message_send(
-                Directive(
-                    snapshot_response=SnapshotResponse(
-                        uuid=self.uuid,
-                        data=self.event_handler.get_snapshot(),
-                        patched=patches,
-                    )
+                SnapshotResponse(
+                    uuid=self.uuid,
+                    data=self.event_handler.get_snapshot(),
+                    patched=patches,
                 )
             )
 
-        if message.HasField("snapshot_response"):
+        if isinstance(message, SnapshotResponse):
             self.event_handler.recieved_snapshot(
-                message.snapshot_response.uuid,
-                message.snapshot_response.SerializeToString(),
+                message.uuid,
+                message.to_json(),
             )
 
-        if message.HasField("set_preset"):
+        if isinstance(message, SetPreset):
             logging.info("Got preset: " + str(message))
-            for d in message.set_preset.data:
+            for d in message.data:
                 if d.uuid == self.uuid:
                     return self.prepare_preset(d)
             for in_jack in self.inputs.values():
@@ -404,35 +399,27 @@ class Module:
             for out_jack in self.outputs.values():
                 out_jack.clear()
 
-        if message.HasField("set_input_jack"):
-            if message.set_input_jack.connection.input_uuid == self.uuid:
-                self.inputs[message.set_input_jack.connection.input_jack_id].connect(
+        if isinstance(message, SetInputJack):
+            if message.connection.input_uuid == self.uuid:
+                self.inputs[message.connection.input_jack_id].connect(
                     self.broadcast_addr["addr"],
-                    message.set_input_jack.source.addr,
-                    message.set_input_jack.source.port,
-                    message.set_input_jack.source.color,
-                    message.set_input_jack.connection.output_uuid,
-                    message.set_input_jack.connection.output_jack_id,
+                    message.source.addr,
+                    message.source.port,
+                    message.source.color,
+                    message.connection.output_uuid,
+                    message.connection.output_jack_id,
                 )
 
     def get_all_snapshots(self):
         """Send a snapshot request to all modules"""
-        self.patch_server.message_send(
-            Directive(snapshot_request=SnapshotRequest(uuid=self.uuid))
-        )
+        self.patch_server.message_send(SnapshotRequest(uuid=self.uuid))
 
     def set_all_snapshots(self, snapshots: List[bytes]):
         """Send a changed present message to all modules"""
         if self.get_patch_state() != PatchState.IDLE:
             return
-        data = []
-        for s in snapshots:
-            m = SnapshotResponse()
-            m.ParseFromString(s)
-            data.append(m)
-        self.patch_server.message_send(
-            Directive(set_preset=SetPreset(uuid=self.uuid, data=data))
-        )
+        data = [SnapshotResponse.from_json(s) for s in snapshots]
+        self.patch_server.message_send(SetPreset(uuid=self.uuid, data=data))
 
     def prepare_preset(self, d: SnapshotResponse):
         self.event_handler.set_snapshot(d.data)
@@ -458,17 +445,15 @@ class Module:
             for p in output_patches[id]:
                 out_jack.connect(p.input_uuid, p.input_jack_id)
                 self.patch_server.message_send(
-                    Directive(
-                        set_input_jack=SetInputJack(
+                    SetInputJack(
+                        uuid=self.uuid,
+                        source=HeldOutputJack(
                             uuid=self.uuid,
-                            source=HeldOutputJack(
-                                uuid=self.uuid,
-                                id=id,
-                                color=out_jack.color,
-                                addr=out_jack.endpoint[0],
-                                port=out_jack.endpoint[1],
-                            ),
-                            connection=p,
-                        )
+                            id=id,
+                            color=out_jack.color,
+                            addr=out_jack.endpoint[0],
+                            port=out_jack.endpoint[1],
+                        ),
+                        connection=p,
                     )
                 )
