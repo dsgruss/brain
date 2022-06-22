@@ -5,7 +5,7 @@ from typing import Optional
 
 from brain.constants import PATCH_ADDR, PATCH_PORT
 from brain.parsers import MessageParser
-from brain.shared_proto import Directive
+from brain.protocol import Directive
 
 
 class InputJackListener:

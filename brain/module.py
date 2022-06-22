@@ -22,7 +22,7 @@ from .interfaces import (
 )
 from .jacks import Jack, InputJack, OutputJack
 from .servers import PatchServer
-from .shared_proto import (
+from .protocol import (
     Directive,
     HeldInputJack,
     HeldOutputJack,

@@ -1,5 +1,5 @@
 from brain.parsers import MessageParser
-from brain.shared_proto import (
+from brain.protocol import (
     Halt,
     Update,
     LocalState,

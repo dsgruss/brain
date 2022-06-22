@@ -19,7 +19,7 @@ from random import randrange
 from time import perf_counter_ns
 from typing import Final, Optional, Set
 
-from brain.shared_proto import (
+from brain.protocol import (
     LocalState,
     Directive,
     Heartbeat,

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
-from brain.shared_proto import PatchState, HeldInputJack, HeldOutputJack
+from brain.protocol import PatchState, HeldInputJack, HeldOutputJack
 
 
 @dataclass

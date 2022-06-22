@@ -1,7 +1,7 @@
 import json
 
 from typing import Optional
-from .shared_proto import (
+from .protocol import (
     Directive,
     Update,
     SnapshotRequest,
