@@ -40,12 +40,14 @@ class Oscilloscope(brain.EventHandler):
         self.ui_setup()
         loop.create_task(self.ui_task())
 
-        self.dataseries = np.zeros((self.time_div * BLOCK_SIZE, CHANNELS))
+        self.dataseries = np.zeros((self.time_div, CHANNELS))
         self.timeseries = np.linspace(
-            0, self.time_div / PACKET_RATE, self.time_div * BLOCK_SIZE, False
+            0, self.time_div / PACKET_RATE, self.time_div, False
         )
 
         self.t = 0
+
+        self.data_jack.connect("10.0.0.2", "239.1.2.3", 19991, 40, "hardware", "test")
 
         # loop.create_task(self.random_square_wave())
         # loop.create_task(self.sin_wave())
@@ -54,8 +56,8 @@ class Oscilloscope(brain.EventHandler):
         loop.create_task(self.module_task())
 
     def process(self, input):
-        self.dataseries[:-BLOCK_SIZE, :] = self.dataseries[BLOCK_SIZE:, :]
-        self.dataseries[-BLOCK_SIZE:, :] = input[0, :, :]
+        self.dataseries[:-1, :] = self.dataseries[1:, :]
+        self.dataseries[-1:, :] = input[0, 0, :]
         return np.zeros((0, BLOCK_SIZE, CHANNELS))
 
     def ui_setup(self):
@@ -79,11 +81,11 @@ class Oscilloscope(brain.EventHandler):
         self.fig_canvas.get_tk_widget().place(x=10, y=10)
 
         ax = fig.add_subplot()
-        self.plot_lines = [Line2D([], [], color=f"C{i}") for i in range(brain.CHANNELS)]
+        self.plot_lines = [Line2D([], [], color=f"C{i}") for i in range(1)]
         for line in self.plot_lines:
             ax.add_line(line)
         ax.set_xlim([0, self.time_div / PACKET_RATE])
-        ax.set_ylim([-1000, 30000])
+        ax.set_ylim([-1000, 6000])
         ax.xaxis.set_ticklabels([])
         ax.yaxis.set_ticklabels([])
         ax.tick_params(direction="in", left=True, right=True, top=True, bottom=True)
@@ -105,11 +107,11 @@ class Oscilloscope(brain.EventHandler):
                 # self.dataseries = self.dataseries[i:, :]
 
                 for i, line in enumerate(self.plot_lines):
-                    tvals = np.linspace(0, self.time_div / PACKET_RATE, 100)
-                    dinterp = np.interp(tvals, self.dataseries[:, i], self.timeseries)
+                    #     tvals = np.linspace(0, self.time_div / PACKET_RATE, 100)
+                    #     dinterp = np.interp(tvals, self.dataseries[:, i], self.timeseries)
                     line.set_data(
-                        tvals,
-                        dinterp,
+                        self.timeseries,
+                        self.dataseries[:, i],
                     )
                 self.fig_canvas.draw()
                 self.root.update()
