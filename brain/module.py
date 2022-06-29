@@ -8,6 +8,8 @@ import uuid
 from typing import Dict, List
 from collections import defaultdict
 
+from brain.leader_election import LeaderElection
+
 from .constants import (
     BLOCK_SIZE,
     CHANNELS,
@@ -24,9 +26,13 @@ from .jacks import Jack, InputJack, OutputJack
 from .servers import PatchServer
 from .protocol import (
     Directive,
+    Heartbeat,
+    HeartbeatResponse,
     HeldInputJack,
     HeldOutputJack,
     LocalState,
+    RequestVote,
+    RequestVoteResponse,
     Update,
     Halt,
     SnapshotRequest,
@@ -34,6 +40,7 @@ from .protocol import (
     PatchConnection,
     SetPreset,
     SetInputJack,
+    SetOutputJack,
 )
 
 
@@ -89,6 +96,7 @@ class Module:
                 self.broadcast_addr = detail
 
         self.patch_server = PatchServer(self.uuid, self.broadcast_addr["addr"])
+        self.leader_election = LeaderElection(self.uuid, self.patch_server)
 
     def update(self):
         """Process all pending tasks: send and recieve directives, audio and control data and
@@ -104,6 +112,7 @@ class Module:
             for jack in self.inputs.values():
                 jack.update()
             self.block_create()
+            self.leader_election.update(None)
             self.tick_time += 1 / PACKET_RATE
             dt = time.perf_counter() - self.tick_time
 
@@ -343,15 +352,15 @@ class Module:
         if isinstance(message, Halt):
             self.halt_callback()
 
-        if isinstance(message, Update):
-            self.global_state.held_inputs[
-                message.uuid
-            ] = message.local_state.held_inputs
-            self.global_state.held_outputs[
-                message.uuid
-            ] = message.local_state.held_outputs
+        # if isinstance(message, Update):
+        #     self.global_state.held_inputs[
+        #         message.uuid
+        #     ] = message.local_state.held_inputs
+        #     self.global_state.held_outputs[
+        #         message.uuid
+        #     ] = message.local_state.held_outputs
 
-            self.update_patch_state()
+        #     self.update_patch_state()
 
         if isinstance(message, SnapshotRequest):
             patches = []
@@ -409,6 +418,21 @@ class Module:
                     message.connection.output_uuid,
                     message.connection.output_jack_id,
                 )
+
+        if isinstance(message, SetOutputJack):
+            if message.connection.output_uuid == self.uuid:
+                self.outputs[message.connection.output_jack_id].connect(
+                    message.connection.input_uuid,
+                    message.connection.input_jack_id,
+                )
+
+        if (
+            isinstance(message, Heartbeat)
+            or isinstance(message, HeartbeatResponse)
+            or isinstance(message, RequestVote)
+            or isinstance(message, RequestVoteResponse)
+        ):
+            self.leader_election.update(message)
 
     def get_all_snapshots(self):
         """Send a snapshot request to all modules"""

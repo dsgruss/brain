@@ -71,7 +71,7 @@ class LeaderElection:
 
         if message is not None:
             self.seen_hosts.add(message.uuid)
-            if id == self.id:
+            if message.uuid == self.id:
                 return
 
         if isinstance(message, Heartbeat):
@@ -129,6 +129,7 @@ class LeaderElection:
             self.current_term += 1
             self.voted_for = self.id
             self.seen_hosts = set()
+            self.seen_hosts.add(self.id)
             self.votes_got = 1
             self.reset_election_timer()
             self.reset_heartbeat_timer()

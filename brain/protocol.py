@@ -84,6 +84,13 @@ class SetInputJack(Directive, DataClassJsonMixin):
 
 
 @dataclass
+class SetOutputJack(Directive, DataClassJsonMixin):
+    uuid: str
+    source: HeldInputJack
+    connection: PatchConnection
+
+
+@dataclass
 class Halt(Directive, DataClassJsonMixin):
     uuid: str
 

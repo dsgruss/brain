@@ -9,6 +9,10 @@ from .protocol import (
     SetPreset,
     SetInputJack,
     Halt,
+    Heartbeat,
+    HeartbeatResponse,
+    RequestVote,
+    RequestVoteResponse,
 )
 
 
@@ -41,6 +45,15 @@ class MessageParser:
                 return SetInputJack.from_dict(resp["SetInputJack"])
             if "Halt" in resp:
                 return Halt.from_dict(resp["Halt"])
+
+            if "Heartbeat" in resp:
+                return Heartbeat.from_dict(resp["Heartbeat"])
+            if "HeartbeatResponse" in resp:
+                return HeartbeatResponse.from_dict(resp["HeartbeatResponse"])
+            if "RequestVote" in resp:
+                return RequestVote.from_dict(resp["RequestVote"])
+            if "RequestVoteResponse" in resp:
+                return RequestVoteResponse.from_dict(resp["RequestVoteResponse"])
             return None
 
     def create_directive(self, message: Directive) -> bytes:
@@ -59,4 +72,13 @@ class MessageParser:
             return json.dumps({"SetInputJack": resp}).encode()
         if isinstance(message, Halt):
             return json.dumps({"Halt": resp}).encode()
+
+        if isinstance(message, Heartbeat):
+            return json.dumps({"Heartbeat": resp}).encode()
+        if isinstance(message, HeartbeatResponse):
+            return json.dumps({"HeartbeatResponse": resp}).encode()
+        if isinstance(message, RequestVote):
+            return json.dumps({"RequestVote": resp}).encode()
+        if isinstance(message, RequestVoteResponse):
+            return json.dumps({"RequestVoteResponse": resp}).encode()
         return b""
