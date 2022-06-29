@@ -3,13 +3,16 @@ import numpy as np
 from typing import Final
 
 #: Preferred communication subnet in case multiple network interfaces are present
-PREFERRED_BROADCAST: Final = "127.255.255.255"
+PREFERRED_BROADCAST: Final = "10.255.255.255"
 
 #: Multicast address used for patching and systems communication
 PATCH_ADDR: Final = "239.0.0.0"
 
 #: Port used to establish the global state and create new patch connections
 PATCH_PORT: Final = 19874
+
+#: Port used for audio data communications
+JACK_PORT: Final = 19991
 
 #: Frequency in packets per second to send audio and CV data
 PACKET_RATE: Final = 1000
