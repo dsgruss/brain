@@ -8,7 +8,7 @@ import brain
 import logging
 from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE, voct_to_frequency
 
-from examples.common import tkJack
+from examples.common import tkJack, tkKnob
 
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
@@ -60,6 +60,17 @@ class Oscillator(brain.EventHandler):
         self.saw_tkjack.place(x=10, y=210)
         self.sqr_tkjack = tkJack(self.root, self.mod, self.sqr_jack, "Sqr")
         self.sqr_tkjack.place(x=10, y=250)
+
+        self.fine_val = tk.DoubleVar()
+        self.fine_val.set(0)
+        tkKnob(
+            self.root,
+            "Fine Pitch",
+            color=self.color,
+            variable=self.fine_val,
+            from_=-1,
+            to=1,
+        ).place(x=70, y=300)
 
         tk.Label(self.root, text=self.name).place(x=10, y=10)
 
@@ -135,7 +146,7 @@ class Oscillator(brain.EventHandler):
         output = np.zeros((4, BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
 
         for i, v in enumerate(input[0, 0, :]):
-            f = voct_to_frequency(v)
+            f = voct_to_frequency(v + 512 * self.fine_val.get())
             for j in range(brain.BLOCK_SIZE):
                 output[0, j, i] = self.sin_wavetable[int(self.wavetable_pos[i])]
                 output[1, j, i] = self.tri_wavetable[int(self.wavetable_pos[i])]
