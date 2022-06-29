@@ -26,6 +26,7 @@ from .jacks import Jack, InputJack, OutputJack
 from .servers import PatchServer
 from .protocol import (
     Directive,
+    GlobalStateUpdate,
     Heartbeat,
     HeartbeatResponse,
     HeldInputJack,
@@ -208,17 +209,18 @@ class Module:
             for jack in self.outputs.values()
             if jack.patch_enabled
         ]
-        self.patch_server.message_send(
-            Update(
-                uuid=self.uuid,
-                local_state=LocalState(
-                    held_inputs=held_inputs, held_outputs=held_outputs
-                ),
-            )
-        )
+        # self.patch_server.message_send(
+        #     Update(
+        #         uuid=self.uuid,
+        #         local_state=LocalState(
+        #             held_inputs=held_inputs, held_outputs=held_outputs
+        #         ),
+        #     )
+        # )
         self.global_state.held_inputs[self.uuid] = held_inputs
         self.global_state.held_outputs[self.uuid] = held_outputs
-        self.update_patch_state()
+        # self.update_patch_state()
+        self.leader_election.update_local_state(LocalState(held_inputs, held_outputs))
 
     def halt_callback(self) -> None:
         self.event_handler.halt()
@@ -433,6 +435,9 @@ class Module:
             or isinstance(message, RequestVoteResponse)
         ):
             self.leader_election.update(message)
+
+        if isinstance(message, GlobalStateUpdate):
+            self.event_handler.patch(message.patch_state)
 
     def get_all_snapshots(self):
         """Send a snapshot request to all modules"""

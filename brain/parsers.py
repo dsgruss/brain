@@ -3,6 +3,7 @@ import json
 from typing import Optional
 from .protocol import (
     Directive,
+    GlobalStateUpdate,
     Update,
     SnapshotRequest,
     SnapshotResponse,
@@ -54,6 +55,8 @@ class MessageParser:
                 return RequestVote.from_dict(resp["RequestVote"])
             if "RequestVoteResponse" in resp:
                 return RequestVoteResponse.from_dict(resp["RequestVoteResponse"])
+            if "GlobalStateUpdate" in resp:
+                return GlobalStateUpdate.from_dict(resp["GlobalStateUpdate"])
             return None
 
     def create_directive(self, message: Directive) -> bytes:
@@ -81,4 +84,7 @@ class MessageParser:
             return json.dumps({"RequestVote": resp}).encode()
         if isinstance(message, RequestVoteResponse):
             return json.dumps({"RequestVoteResponse": resp}).encode()
-        return b""
+        if isinstance(message, GlobalStateUpdate):
+            return json.dumps({"GlobalStateUpdate": resp}).encode()
+
+        raise NotImplementedError

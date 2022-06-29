@@ -6,13 +6,17 @@ from typing import List, Optional
 # Convenience structures for defining current patching states and connections
 
 
-class PatchState(Enum):
+class PatchState(str, Enum):
     """Enum used to track a global state over all connected modules"""
 
-    IDLE = 0  #: No buttons pushed across all modules
-    PATCH_ENABLED = 1  #: One single button pushed
-    PATCH_TOGGLED = 2  #: Two buttons pushed, consisting of an input and output
-    BLOCKED = 3  #: Three or more buttons pushed or two of the same type
+    #: No switch pushed across all modules
+    IDLE = "Idle"
+    #: One single button pushed
+    PATCH_ENABLED = "PatchEnabled"
+    #: Two buttons pushed, consisting of an input and output
+    PATCH_TOGGLED = "PatchToggled"
+    #: Three or more buttons pushed or two of the same type
+    BLOCKED = "Blocked"
 
 
 @dataclass
@@ -115,14 +119,6 @@ class HeartbeatResponse(Directive, DataClassJsonMixin):
 
 
 @dataclass
-class GlobalStateUpdate(Directive, DataClassJsonMixin):
-    uuid: str
-    patch_state: PatchState
-    input: HeldInputJack
-    output: HeldOutputJack
-
-
-@dataclass
 class RequestVote(Directive, DataClassJsonMixin):
     uuid: str
     term: int
@@ -134,3 +130,11 @@ class RequestVoteResponse(Directive, DataClassJsonMixin):
     term: int
     voted_for: str
     vote_granted: bool
+
+
+@dataclass
+class GlobalStateUpdate(Directive, DataClassJsonMixin):
+    uuid: str
+    patch_state: PatchState
+    input: Optional[HeldInputJack]
+    output: Optional[HeldOutputJack]

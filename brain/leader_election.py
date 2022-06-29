@@ -17,13 +17,15 @@
 from enum import Enum
 from random import randrange
 from time import perf_counter_ns
-from typing import Final, Optional, Set
+from typing import Dict, Final, Optional, Set
 
 from brain.protocol import (
+    GlobalStateUpdate,
     LocalState,
     Directive,
     Heartbeat,
     HeartbeatResponse,
+    PatchState,
     RequestVote,
     RequestVoteResponse,
 )
@@ -47,8 +49,9 @@ class LeaderElection:
     def __init__(self, id, patch_server) -> None:
         self.id = id
         self.patch_server = patch_server
-        self.seen_hosts: Set[str] = set()
+        self.seen_hosts: Dict[str, Optional[LocalState]] = {}
         self.local_state = LocalState(held_inputs=[], held_outputs=[])
+        self.last_update = None
         self.reset_election_timer()
 
     def time_ms(self):
@@ -69,8 +72,11 @@ class LeaderElection:
 
     def update(self, message: Optional[Directive]):
 
+        self.seen_hosts[self.id] = self.local_state
+
         if message is not None:
-            self.seen_hosts.add(message.uuid)
+            if message.uuid not in self.seen_hosts:
+                self.seen_hosts[message.uuid] = None
             if message.uuid == self.id:
                 return
 
@@ -112,7 +118,7 @@ class LeaderElection:
                 if message.term > self.current_term:
                     self.current_term = message.term
                     self.role = Roles.FOLLOWER
-                    self.voted_for = None
+                    self.voted_for = message.uuid
                 if self.voted_for is None or self.voted_for == message.uuid:
                     self.reset_election_timer()
                     self.patch_server.message_send(
@@ -128,8 +134,7 @@ class LeaderElection:
             self.role = Roles.CANDIDATE
             self.current_term += 1
             self.voted_for = self.id
-            self.seen_hosts = set()
-            self.seen_hosts.add(self.id)
+            self.seen_hosts = {self.id: self.local_state}
             self.votes_got = 1
             self.reset_election_timer()
             self.reset_heartbeat_timer()
@@ -165,6 +170,12 @@ class LeaderElection:
 
         if self.role == Roles.LEADER:
             if self.heartbeat_timer_elapsed():
+                # Currently, this sends an update every heartbeat, meaning it could be up to 100 ms
+                # before a change in the patch status is registered. Future mitigations would be to
+                # use a third timer for the heartbeat response and/or send the state update as soon
+                # as all known module have responded.
+                self.check_global_state_update()
+
                 self.reset_heartbeat_timer()
                 self.iteration += 1
                 self.patch_server.message_send(
@@ -174,3 +185,41 @@ class LeaderElection:
                         iteration=self.iteration,
                     )
                 )
+            if message and isinstance(message, HeartbeatResponse):
+                if (
+                    message.success
+                    and message.iteration == self.iteration
+                    and message.state is not None
+                ):
+                    # A timeout value should be added here for modules that go offline
+                    self.seen_hosts[message.uuid] = message.state
+
+    def check_global_state_update(self):
+        inputs = []
+        outputs = []
+        for v in self.seen_hosts.values():
+            if v is not None:
+                inputs.extend(v.held_inputs)
+                outputs.extend(v.held_outputs)
+        if len(inputs) == 0 and len(outputs) == 0:
+            update = GlobalStateUpdate(self.id, PatchState.IDLE, None, None)
+        elif len(inputs) == 1 and len(outputs) == 0:
+            update = GlobalStateUpdate(
+                self.id, PatchState.PATCH_ENABLED, inputs[0], None
+            )
+        elif len(inputs) == 0 and len(outputs) == 1:
+            update = GlobalStateUpdate(
+                self.id, PatchState.PATCH_ENABLED, None, outputs[0]
+            )
+        elif len(inputs) == 1 and len(outputs) == 1:
+            update = GlobalStateUpdate(
+                self.id, PatchState.PATCH_TOGGLED, inputs[0], outputs[0]
+            )
+        else:
+            update = GlobalStateUpdate(self.id, PatchState.BLOCKED, None, None)
+        if update != self.last_update:
+            self.last_update = update
+            self.patch_server.message_send(update)
+
+    def update_local_state(self, local_state):
+        self.local_state = local_state
