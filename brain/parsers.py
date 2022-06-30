@@ -4,7 +4,6 @@ from typing import Optional
 from .protocol import (
     Directive,
     GlobalStateUpdate,
-    Update,
     SnapshotRequest,
     SnapshotResponse,
     SetPreset,
@@ -34,8 +33,6 @@ class MessageParser:
             return None
         else:
             resp = json.loads(data)
-            if "Update" in resp:
-                return Update.from_dict(resp["Update"])
             if "SnapshotRequest" in resp:
                 return SnapshotRequest.from_dict(resp["SnapshotRequest"])
             if "SnapshotResponse" in resp:
@@ -63,8 +60,6 @@ class MessageParser:
         """Inverse of ``parse_directive``"""
 
         resp = message.to_dict()
-        if isinstance(message, Update):
-            return json.dumps({"Update": resp}).encode()
         if isinstance(message, SnapshotRequest):
             return json.dumps({"SnapshotRequest": resp}).encode()
         if isinstance(message, SnapshotResponse):

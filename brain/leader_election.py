@@ -14,6 +14,8 @@
 # This can be expanded to keep track of all current patch connections made in the future, if
 # required.
 
+import logging
+
 from enum import Enum
 from random import randrange
 from time import perf_counter_ns
@@ -52,6 +54,7 @@ class LeaderElection:
         self.seen_hosts: Dict[str, Optional[LocalState]] = {}
         self.local_state = LocalState(held_inputs=[], held_outputs=[])
         self.last_update = None
+        self.last_seen_hosts = 0
         self.reset_election_timer()
 
     def time_ms(self):
@@ -165,6 +168,7 @@ class LeaderElection:
                 if self.votes_got / len(self.seen_hosts) >= 0.5:
                     self.role = Roles.LEADER
                     self.iteration = 0
+                    self.last_update = None
                 else:
                     self.role = Roles.FOLLOWER
 
@@ -174,9 +178,12 @@ class LeaderElection:
                 # before a change in the patch status is registered. Future mitigations would be to
                 # use a third timer for the heartbeat response and/or send the state update as soon
                 # as all known module have responded.
-                self.check_global_state_update()
+                if self.last_seen_hosts != -1:
+                    self.check_global_state_update()
 
                 self.reset_heartbeat_timer()
+                self.last_seen_hosts = len(self.seen_hosts)
+                self.seen_hosts = {self.id: self.local_state}
                 self.iteration += 1
                 self.patch_server.message_send(
                     Heartbeat(
@@ -193,6 +200,10 @@ class LeaderElection:
                 ):
                     # A timeout value should be added here for modules that go offline
                     self.seen_hosts[message.uuid] = message.state
+                    # If everyone known checked in, then send update
+                    if len(self.seen_hosts) == self.last_seen_hosts:
+                        self.check_global_state_update()
+                        self.last_seen_hosts = -1
 
     def check_global_state_update(self):
         inputs = []
@@ -219,6 +230,7 @@ class LeaderElection:
             update = GlobalStateUpdate(self.id, PatchState.BLOCKED, None, None)
         if update != self.last_update:
             self.last_update = update
+            logging.info("Sending global update: " + str(update))
             self.patch_server.message_send(update)
 
     def update_local_state(self, local_state):

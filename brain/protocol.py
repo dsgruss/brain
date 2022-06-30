@@ -57,12 +57,6 @@ class Directive(DataClassJsonMixin):
 
 
 @dataclass
-class Update(Directive, DataClassJsonMixin):
-    uuid: str
-    local_state: LocalState
-
-
-@dataclass
 class SnapshotRequest(Directive, DataClassJsonMixin):
     uuid: str
 

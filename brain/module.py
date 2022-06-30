@@ -34,7 +34,6 @@ from .protocol import (
     LocalState,
     RequestVote,
     RequestVoteResponse,
-    Update,
     Halt,
     SnapshotRequest,
     SnapshotResponse,
@@ -73,7 +72,7 @@ class Module:
         self.name = name
         self.event_handler = event_handler or EventHandler()
         self.uuid: str = id or str(uuid.uuid4())
-        self.global_state = GlobalState(PatchState.IDLE, {}, {})
+        self.patch_state = PatchState.IDLE
 
         self.inputs: Dict[str, InputJack] = {}
         self.outputs: Dict[str, OutputJack] = {}
@@ -158,7 +157,7 @@ class Module:
 
     def get_patch_state(self) -> PatchState:
         """Retrieves the global patch state"""
-        return self.global_state.patch_state
+        return self.patch_state
 
     def is_input(self, jack: Jack) -> bool:
         """Check if given jack is an input jack"""
@@ -209,17 +208,6 @@ class Module:
             for jack in self.outputs.values()
             if jack.patch_enabled
         ]
-        # self.patch_server.message_send(
-        #     Update(
-        #         uuid=self.uuid,
-        #         local_state=LocalState(
-        #             held_inputs=held_inputs, held_outputs=held_outputs
-        #         ),
-        #     )
-        # )
-        self.global_state.held_inputs[self.uuid] = held_inputs
-        self.global_state.held_outputs[self.uuid] = held_outputs
-        # self.update_patch_state()
         self.leader_election.update_local_state(LocalState(held_inputs, held_outputs))
 
     def halt_callback(self) -> None:
@@ -229,66 +217,45 @@ class Module:
         """Sends a halt directive to all connected modules"""
         self.patch_server.message_send(Halt(uuid="GLOBAL"))
 
-    def update_patch_state(self):
+    def update_patch_state(self, gsu: GlobalStateUpdate):
         """Manages changes in the global state"""
-        active_inputs = list(itertools.chain(*self.global_state.held_inputs.values()))
-        active_outputs = list(itertools.chain(*self.global_state.held_outputs.values()))
-        total_inputs = len(active_inputs)
-        total_outputs = len(active_outputs)
 
-        if total_inputs >= 2 or total_outputs >= 2:
-            patch_state = PatchState.BLOCKED
-        elif total_inputs == 1 and total_outputs == 1:
-            patch_state = PatchState.PATCH_TOGGLED
-        elif total_inputs == 1 or total_outputs == 1:
-            patch_state = PatchState.PATCH_ENABLED
-        else:
-            patch_state = PatchState.IDLE
+        self.patch_state = gsu.patch_state
 
-        if self.global_state.patch_state != patch_state:
-            self.global_state.patch_state = patch_state
-            logging.info("global_state: " + str(self.global_state))
+        for jack in self.inputs.values():
+            jack.patch_member = False
+        for jack in self.outputs.values():
+            jack.patch_member = False
 
-            for jack in self.inputs.values():
-                jack.patch_member = False
-            for jack in self.outputs.values():
-                jack.patch_member = False
+        if gsu.patch_state == PatchState.PATCH_ENABLED:
+            if gsu.input is not None:
+                if self.uuid == gsu.input.uuid:
+                    self.inputs[gsu.input.id].patch_member = True
+                for jack in self.outputs.values():
+                    jack.patch_member = jack.is_connected(
+                        gsu.input.uuid, gsu.input.id
+                    )
+            elif gsu.output is not None:
+                if self.uuid == gsu.output.uuid:
+                    self.outputs[gsu.output.id].patch_member = True
+                for jack in self.inputs.values():
+                    jack.patch_member = jack.is_connected(
+                        gsu.output.uuid, gsu.output.id
+                    )
 
-            if patch_state == PatchState.PATCH_ENABLED:
-                if total_inputs == 1:
-                    held_input_uuid = active_inputs[0].uuid
-                    held_input_id = active_inputs[0].id
-                    if self.uuid == held_input_uuid:
-                        self.inputs[held_input_id].patch_member = True
-                    for jack in self.outputs.values():
-                        jack.patch_member = jack.is_connected(
-                            held_input_uuid, held_input_id
-                        )
-                elif total_outputs == 1:
-                    held_output_uuid = active_outputs[0].uuid
-                    held_output_id = active_outputs[0].id
-                    if self.uuid == held_output_uuid:
-                        self.outputs[held_output_id].patch_member = True
-                    for jack in self.inputs.values():
-                        jack.patch_member = jack.is_connected(
-                            held_output_uuid, held_output_id
-                        )
+        if gsu.patch_state == PatchState.PATCH_TOGGLED:
+            for output_jack in self.outputs.values():
+                if gsu.output.uuid == self.uuid and gsu.output.id == output_jack.id:
+                    continue
+                if output_jack.is_connected(gsu.input.uuid, gsu.input.id):
+                    output_jack.disconnect(gsu.input.uuid, gsu.input.id)
 
-            if patch_state == PatchState.PATCH_TOGGLED:
-                input = active_inputs[0]
-                output = active_outputs[0]
-                for output_jack in self.outputs.values():
-                    if output.uuid == self.uuid and output.id == output_jack.id:
-                        continue
-                    if output_jack.is_connected(input.uuid, input.id):
-                        output_jack.disconnect(input.uuid, input.id)
+            if gsu.input.uuid == self.uuid:
+                self.toggle_input_connection(gsu.input, gsu.output)
+            if gsu.output.uuid == self.uuid:
+                self.toggle_output_connection(gsu.input, gsu.output)
 
-                if input.uuid == self.uuid:
-                    self.toggle_input_connection(input, output)
-                if output.uuid == self.uuid:
-                    self.toggle_output_connection(input, output)
-
-            self.event_handler.patch(patch_state)
+        self.event_handler.patch(gsu.patch_state)
 
     def toggle_input_connection(self, input, output) -> None:
         """Toggles an input connection that is owned by this module, either connecting it to the
@@ -353,16 +320,6 @@ class Module:
 
         if isinstance(message, Halt):
             self.halt_callback()
-
-        # if isinstance(message, Update):
-        #     self.global_state.held_inputs[
-        #         message.uuid
-        #     ] = message.local_state.held_inputs
-        #     self.global_state.held_outputs[
-        #         message.uuid
-        #     ] = message.local_state.held_outputs
-
-        #     self.update_patch_state()
 
         if isinstance(message, SnapshotRequest):
             patches = []
@@ -437,7 +394,8 @@ class Module:
             self.leader_election.update(message)
 
         if isinstance(message, GlobalStateUpdate):
-            self.event_handler.patch(message.patch_state)
+            logging.info("<= " + str(message))
+            self.update_patch_state(message)
 
     def get_all_snapshots(self):
         """Send a snapshot request to all modules"""
