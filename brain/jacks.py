@@ -16,7 +16,7 @@ class Jack:
 
     def __init__(self, name: str):
         self.name: Final = name
-        self.id: Final = str(next(Jack._id_iter))
+        self.id: Final = next(Jack._id_iter)
 
     def is_patched(self) -> bool:
         raise NotImplementedError
@@ -38,7 +38,8 @@ class InputJack(Jack):
     def __init__(self, name: str):
         self.data_queue = deque()
         self.last_seen_data = np.zeros((BLOCK_SIZE, CHANNELS), dtype=SAMPLE_TYPE)
-        self.connected_jack = ("", "")
+        self.connected_jack_uuid = None
+        self.connected_jack_id = None
         self.jack_listener = InputJackListener()
 
         super().__init__(name)
@@ -48,28 +49,30 @@ class InputJack(Jack):
 
         :return: ``True`` if connected
         """
-        return self.connected_jack != ("", "")
+        return self.connected_jack_uuid is not None
 
     def clear(self):
         if self.is_patched():
             self.jack_listener.disconnect()
-            self.connected_jack = ("", "")
+            self.connected_jack_uuid = None
+            self.connected_jack_id = None
 
     def disconnect(self, output_uuid, output_id):
         if self.is_connected(output_uuid, output_id):
             self.clear()
 
     def is_connected(self, output_uuid, output_id):
-        logging.info("Connected input jack test:")
-        logging.info(self.connected_jack)
-        logging.info(((output_uuid, output_id)))
-        return self.connected_jack == (output_uuid, output_id)
+        return (self.connected_jack_uuid, self.connected_jack_id) == (
+            output_uuid,
+            output_id,
+        )
 
     def connect(self, address, mult_addr, port, output_color, output_uuid, output_id):
         if self.is_patched():
             self.clear()
         self.color = output_color
-        self.connected_jack = (output_uuid, output_id)
+        self.connected_jack_uuid = output_uuid
+        self.connect_jack_id = output_id
 
         self.jack_listener.connect(address, mult_addr, port)
 
@@ -120,7 +123,7 @@ class OutputJack(Jack):
 
     def __init__(self, address: str, name: str, color: int):
         self.color = color
-        self.connected_jacks: Set[Tuple[str, str]] = set()
+        self.connected_jacks: Set[Tuple[str, int]] = set()
         self.jack_server = OutputJackServer(address)
         self.endpoint = self.jack_server.endpoint
         self.level = 0

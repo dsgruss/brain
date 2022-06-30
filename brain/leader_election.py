@@ -19,7 +19,7 @@ import logging
 from enum import Enum
 from random import randrange
 from time import perf_counter_ns
-from typing import Dict, Final, Optional, Set
+from typing import Dict, Final, Optional
 
 from brain.protocol import (
     GlobalStateUpdate,

@@ -22,13 +22,13 @@ class PatchState(str, Enum):
 @dataclass
 class HeldInputJack(DataClassJsonMixin):
     uuid: str
-    id: str
+    id: int
 
 
 @dataclass
 class HeldOutputJack(DataClassJsonMixin):
     uuid: str
-    id: str
+    id: int
     color: int
     addr: str
     port: int
@@ -43,9 +43,9 @@ class LocalState(DataClassJsonMixin):
 @dataclass
 class PatchConnection(DataClassJsonMixin):
     input_uuid: str
-    input_jack_id: str
+    input_jack_id: int
     output_uuid: str
-    output_jack_id: str
+    output_jack_id: int
 
 
 # Patch update and preset handling messages

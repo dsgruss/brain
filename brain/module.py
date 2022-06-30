@@ -1,4 +1,3 @@
-import itertools
 import logging
 import netifaces
 import numpy as np
@@ -19,7 +18,6 @@ from .constants import (
 )
 from .interfaces import (
     EventHandler,
-    GlobalState,
     PatchState,
 )
 from .jacks import Jack, InputJack, OutputJack
@@ -74,8 +72,8 @@ class Module:
         self.uuid: str = id or str(uuid.uuid4())
         self.patch_state = PatchState.IDLE
 
-        self.inputs: Dict[str, InputJack] = {}
-        self.outputs: Dict[str, OutputJack] = {}
+        self.inputs: Dict[int, InputJack] = {}
+        self.outputs: Dict[int, OutputJack] = {}
         self.broadcast_addr = None
         self.tick_time = None
 
@@ -222,38 +220,43 @@ class Module:
 
         self.patch_state = gsu.patch_state
 
-        for jack in self.inputs.values():
-            jack.patch_member = False
-        for jack in self.outputs.values():
-            jack.patch_member = False
+        for in_jack in self.inputs.values():
+            in_jack.patch_member = False
+        for out_jack in self.outputs.values():
+            out_jack.patch_member = False
 
         if gsu.patch_state == PatchState.PATCH_ENABLED:
             if gsu.input is not None:
                 if self.uuid == gsu.input.uuid:
                     self.inputs[gsu.input.id].patch_member = True
-                for jack in self.outputs.values():
-                    jack.patch_member = jack.is_connected(
+                for out_jack in self.outputs.values():
+                    out_jack.patch_member = out_jack.is_connected(
                         gsu.input.uuid, gsu.input.id
                     )
             elif gsu.output is not None:
                 if self.uuid == gsu.output.uuid:
                     self.outputs[gsu.output.id].patch_member = True
-                for jack in self.inputs.values():
-                    jack.patch_member = jack.is_connected(
+                for in_jack in self.inputs.values():
+                    in_jack.patch_member = in_jack.is_connected(
                         gsu.output.uuid, gsu.output.id
                     )
+            else:
+                logging.info("Invalid patch state received: " + str(gsu))
 
         if gsu.patch_state == PatchState.PATCH_TOGGLED:
-            for output_jack in self.outputs.values():
-                if gsu.output.uuid == self.uuid and gsu.output.id == output_jack.id:
-                    continue
-                if output_jack.is_connected(gsu.input.uuid, gsu.input.id):
-                    output_jack.disconnect(gsu.input.uuid, gsu.input.id)
+            if gsu.input is None or gsu.output is None:
+                logging.info("Invalid patch state received: " + str(gsu))
+            else:
+                for output_jack in self.outputs.values():
+                    if gsu.output.uuid == self.uuid and gsu.output.id == output_jack.id:
+                        continue
+                    if output_jack.is_connected(gsu.input.uuid, gsu.input.id):
+                        output_jack.disconnect(gsu.input.uuid, gsu.input.id)
 
-            if gsu.input.uuid == self.uuid:
-                self.toggle_input_connection(gsu.input, gsu.output)
-            if gsu.output.uuid == self.uuid:
-                self.toggle_output_connection(gsu.input, gsu.output)
+                if gsu.input.uuid == self.uuid:
+                    self.toggle_input_connection(gsu.input, gsu.output)
+                if gsu.output.uuid == self.uuid:
+                    self.toggle_output_connection(gsu.input, gsu.output)
 
         self.event_handler.patch(gsu.patch_state)
 
@@ -329,8 +332,8 @@ class Module:
                         PatchConnection(
                             input_uuid=self.uuid,
                             input_jack_id=id,
-                            output_uuid=in_jack.connected_jack[0],
-                            output_jack_id=in_jack.connected_jack[1],
+                            output_uuid=in_jack.connected_jack_uuid,
+                            output_jack_id=in_jack.connected_jack_id,
                         )
                     )
             for id, out_jack in self.outputs.items():

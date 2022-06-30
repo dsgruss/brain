@@ -1,19 +1,7 @@
 import numpy as np
 
-from dataclasses import dataclass
-from typing import Dict, List
-
 from brain.constants import BLOCK_SIZE, CHANNELS, SAMPLE_TYPE
-from brain.protocol import PatchState, HeldInputJack, HeldOutputJack
-
-
-@dataclass
-class GlobalState:
-    """Describes the global state: all held buttons"""
-
-    patch_state: PatchState
-    held_inputs: Dict[str, List[HeldInputJack]]
-    held_outputs: Dict[str, List[HeldOutputJack]]
+from brain.protocol import PatchState
 
 
 class EventHandler:
