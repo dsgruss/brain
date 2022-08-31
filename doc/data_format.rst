@@ -70,6 +70,10 @@ a note. Therefore, the conversion from a V/Oct signal to Hz is::
 
 This is about 0.2 cents semitone resultion per bit.
 
+EDIT: This doesn't quite work as 69 is not the midpoint of a seven bit
+value, so it must be shifted by five semitones first before being added
+to the high bits...
+
 Gates and Triggers
 ------------------
 
