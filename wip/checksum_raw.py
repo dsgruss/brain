@@ -4,7 +4,8 @@ from scapy.all import IFACES, conf
 
 full_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 full_sock.bind(("10.0.0.2", 19992))
-while True:
+for _ in range(0, 2):
+# while True:
     full_sock.sendto(b'{"Halt":{"uuid":"GLOBA0"}}', ("239.0.0.0", 19874))
 
     IFACES.show()
